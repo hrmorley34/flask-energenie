@@ -1,0 +1,48 @@
+<!doctype html>
+
+<head>
+    <title>Christmas Tree control</title>
+    <style>
+        body {
+            background-color: rgb(37, 37, 37);
+            color: rgb(255, 255, 255);
+        }
+
+        button {
+            padding: 15px 32px;
+            text-align: center;
+            margin: 4px 2px;
+        }
+
+        .on {
+            background-color: rgb(0, 119, 0);
+        }
+
+        .off {
+            background-color: rgb(185, 0, 0);
+        }
+    </style>
+    <script type="application/javascript">
+        /**
+         * @param {string} path
+         */
+        function send_to(path) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", path, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(/*JSON.stringify({value: 'value'})*/);
+        }
+        function send_on() {
+            send_to("/energenie/1/on");
+        }
+        function send_off() {
+            send_to("/energenie/1/off");
+        }
+    </script>
+</head>
+
+<body>
+    <h1>Control</h1>
+    <button class="on" onclick="send_on()">On</button>
+    <button class="off" onclick="send_off()">Off</button>
+</body>
