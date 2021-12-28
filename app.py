@@ -1,15 +1,23 @@
 from flask import Flask, abort, render_template
-from gpiozero import Energenie
+from gpiozero.boards import _EnergenieMaster
 
 from config import get_version, load_config
 
 
 app = Flask(__name__)
 CONFIG = load_config()
-CONTROLLERS = {
-    socket["socket"]: Energenie(socket["socket"]) for socket in CONFIG["sockets"]
-}
+ENERGENIE_IDS = (1, 2, 3, 4)
+CONTROLLER = _EnergenieMaster(pin_factory=None)
 VERSION = get_version()
+
+
+def transmit(socket: int, value: bool) -> None:
+    assert socket in ENERGENIE_IDS
+    CONTROLLER.transmit(socket, value)
+
+
+def transmit_all(value: bool) -> None:
+    CONTROLLER.transmit(5, value)
 
 
 @app.route("/")
@@ -19,29 +27,27 @@ def main_page():
 
 @app.route("/energenie/<int:socket>/on", methods=["POST"])
 def energenie_single_on(socket: int):
-    if socket not in CONTROLLERS:
+    if socket not in ENERGENIE_IDS:
         abort(400)
-    CONTROLLERS[socket].on()
+    transmit(socket, True)
     return "", 204
 
 
 @app.route("/energenie/all/on", methods=["POST"])
 def energenie_all_on():
-    for socket in CONTROLLERS:
-        CONTROLLERS[socket].on()
+    transmit_all(True)
     return "", 204
 
 
 @app.route("/energenie/<int:socket>/off", methods=["POST"])
 def energenie_single_off(socket: int):
-    if socket not in CONTROLLERS:
+    if socket not in ENERGENIE_IDS:
         abort(400)
-    CONTROLLERS[socket].off()
+    transmit(socket, False)
     return "", 204
 
 
 @app.route("/energenie/all/off", methods=["POST"])
 def energenie_all_off():
-    for socket in CONTROLLERS:
-        CONTROLLERS[socket].off()
+    transmit_all(False)
     return "", 204
