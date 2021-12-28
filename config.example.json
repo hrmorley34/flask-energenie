@@ -1,0 +1,22 @@
+{
+    "title": "Christmas Tree Control",
+    "all": {
+        "header": "Main control",
+        "on": "All On",
+        "off": "All Off"
+    },
+    "sockets": [
+        {
+            "socket": 1,
+            "header": "Christmas tree",
+            "on": "On",
+            "off": "Off"
+        },
+        {
+            "socket": 2,
+            "header": "Banister",
+            "on": "On",
+            "off": "Off"
+        }
+    ]
+}

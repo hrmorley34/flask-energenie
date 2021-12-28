@@ -1,7 +1,7 @@
 <!doctype html>
 
 <head>
-    <title>Christmas Tree control</title>
+    <title>{{ config.title }}</title>
     <style>
         body {
             background-color: rgb(37, 37, 37);
@@ -21,6 +21,10 @@
         .off {
             background-color: rgb(185, 0, 0);
         }
+
+        .version {
+            color: rgb(90, 90, 90);
+        }
     </style>
     <script type="application/javascript">
         /**
@@ -32,17 +36,41 @@
             xhr.setRequestHeader('Content-Type', 'application/json');
             xhr.send(/*JSON.stringify({value: 'value'})*/);
         }
-        function send_on() {
-            send_to("/energenie/1/on");
+
+        /**
+         * @param {number} index
+         */
+        function send_on(index) {
+            send_to("/energenie/" + index + "/on");
         }
-        function send_off() {
-            send_to("/energenie/1/off");
+        function send_all_on() {
+            send_to("/energenie/all/on");
+        }
+
+        /**
+         * @param {number} index
+         */
+        function send_off(index) {
+            send_to("/energenie/" + index + "/off");
+        }
+        function send_all_off() {
+            send_to("/energenie/all/off");
         }
     </script>
 </head>
 
 <body>
-    <h1>Control</h1>
-    <button class="on" onclick="send_on()">On</button>
-    <button class="off" onclick="send_off()">Off</button>
+    <h1>{{ config.all.header }}</h1>
+    <button class="on" onclick="send_all_on()">{{ config.all.on }}</button>
+    <button class="off" onclick="send_all_off()">{{ config.all.off }}</button>
+    <hr>
+    {% for item in config.sockets %}
+    <h2>{{ item.header }}</h2>
+    <button class="on" onclick="send_on({{ item.socket }})">{{ item.on }}</button>
+    <button class="off" onclick="send_off({{ item.socket }})">{{ item.off }}</button>
+    <hr>
+    {% endfor %}
+    {% if version %}
+    <footer class="version">{{ version }}</footer>
+    {% endif %}
 </body>
