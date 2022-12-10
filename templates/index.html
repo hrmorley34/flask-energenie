@@ -1,6 +1,8 @@
 <!doctype html>
 
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>{{ config.title }}</title>
     <style>
         body {
@@ -12,6 +14,7 @@
             padding: 15px 32px;
             text-align: center;
             margin: 4px 2px;
+            color: rgb(255, 255, 255);
         }
 
         .on {
@@ -25,49 +28,181 @@
         .version {
             color: rgb(90, 90, 90);
         }
+
+        .flex-container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        /* Cross icon, for failure */
+        .cross {
+            display: grid;
+            width: 50px;
+            height: 50px;
+        }
+
+        .cross:before,
+        .cross:after {
+            /* Centred vertical bar */
+            content: " ";
+            display: block;
+            grid-column: 1;
+            grid-row: 1;
+            width: 0px;
+            height: 40px;
+            margin: 5px 22px;
+            border-left: 6px solid #fff;
+        }
+
+        .cross:before {
+            transform: rotate(45deg);
+        }
+
+        .cross:after {
+            transform: rotate(-45deg);
+        }
+
+        /* Spinner from https://loading.io/css/ with sizes changed */
+        .lds-dual-ring {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+        }
+
+        .lds-dual-ring:after {
+            content: " ";
+            display: block;
+            width: 28px;
+            height: 28px;
+            margin: 5px;
+            border-radius: 50%;
+            border: 6px solid #fff;
+            border-color: #fff transparent #fff transparent;
+            animation: lds-dual-ring 1.2s linear infinite;
+        }
+
+        @keyframes lds-dual-ring {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Attribute for hiding not-in-use indicators */
+        .hidden {
+            display: none;
+        }
+
     </style>
     <script type="application/javascript">
         /**
          * @param {string} path
+         * @param {() => void} success
+         * @param {() => void} error
          */
-        function send_to(path) {
+        function send_to(path, success, error) {
             var xhr = new XMLHttpRequest();
             xhr.open("POST", path, true);
             xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.send(/*JSON.stringify({value: 'value'})*/);
+            xhr.addEventListener("load", success);
+            xhr.addEventListener("error", error);
+            xhr.addEventListener("abort", error);
+            xhr.send();
+        }
+
+        var counts = [
+            /*{% for item in config.sockets %}*/
+            { loading: 0, cross: 0 },
+            /*{% endfor %}*/
+            { loading: 0, cross: 0 }
+        ];
+
+        /**
+         * @param {number} id_index
+         * @param {boolean} loading
+         * @param {boolean} cross
+         */
+        function show_icons(id_index, loading, cross) {
+            let div = document.getElementById("buttons-" + id_index);
+            let loading_div = div.querySelector(":scope > .lds-dual-ring");
+            if (loading) loading_div.classList.remove("hidden");
+            else loading_div.classList.add("hidden");
+            let cross_div = div.querySelector(":scope > .cross");
+            if (cross) cross_div.classList.remove("hidden");
+            else cross_div.classList.add("hidden");
+        }
+
+        /**
+         * @param {number} id_index
+         * @param {number} loading
+         * @param {number} cross
+         */
+        function modify_icons(id_index, loading, cross) {
+            let d = counts[id_index];
+            d.loading += loading;
+            d.cross += cross;
+            show_icons(id_index, d.loading > 0, d.cross > 0);
+        }
+
+        /**
+         * @param {string} path
+         * @param {number} id_index
+         */
+        function send_cmd(path, id_index) {
+            modify_icons(id_index, 1, 0);
+            send_to(path,
+                () => modify_icons(id_index, -1, 0),
+                () => {
+                    modify_icons(id_index, -1, 1);
+                    setTimeout(() => modify_icons(id_index, 0, -1), 2000);
+                });
         }
 
         /**
          * @param {number} index
+         * @param {number} id_index
          */
-        function send_on(index) {
-            send_to("/energenie/" + index + "/on");
+        function send_on(index, id_index) {
+            send_cmd("/energenie/" + index + "/on", id_index);
         }
         function send_all_on() {
-            send_to("/energenie/all/on");
+            send_cmd("/energenie/all/on", 0);
         }
 
         /**
          * @param {number} index
+         * @param {number} id_index
          */
-        function send_off(index) {
-            send_to("/energenie/" + index + "/off");
+        function send_off(index, id_index) {
+            send_cmd("/energenie/" + index + "/off", id_index);
         }
         function send_all_off() {
-            send_to("/energenie/all/off");
+            send_cmd("/energenie/all/off", 0);
         }
     </script>
 </head>
 
 <body>
     <h1>{{ config.all.header }}</h1>
-    <button class="on" onclick="send_all_on()">{{ config.all.on }}</button>
-    <button class="off" onclick="send_all_off()">{{ config.all.off }}</button>
+    <div class="flex-container" id="buttons-0">
+        <button class="on" onclick="send_all_on()">{{ config.all.on }}</button>
+        <button class="off" onclick="send_all_off()">{{ config.all.off }}</button>
+        <div class="lds-dual-ring hidden"></div>
+        <div class="cross hidden"></div>
+    </div>
     <hr>
     {% for item in config.sockets %}
     <h2>{{ item.header }}</h2>
-    <button class="on" onclick="send_on({{ item.socket }})">{{ item.on }}</button>
-    <button class="off" onclick="send_off({{ item.socket }})">{{ item.off }}</button>
+    <div class="flex-container" id="buttons-{{ loop.index }}">
+        <button class="on" onclick="send_on({{ item.socket }}, {{ loop.index }})">{{ item.on }}</button>
+        <button class="off" onclick="send_off({{ item.socket }}, {{ loop.index }})">{{ item.off }}</button>
+        <div class="lds-dual-ring hidden"></div>
+        <div class="cross hidden"></div>
+    </div>
     <hr>
     {% endfor %}
     {% if version %}
