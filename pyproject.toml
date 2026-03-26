@@ -1,12 +1,18 @@
 [project]
 name = "flask-energenie"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 authors = [{ name = "Henry Morley", email = "henry@morley.org.uk" }]
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.9"
-dependencies = ["flask (>=3.1.3,<4.0.0)", "gpiozero (>=2.0.1,<3.0.0)"]
+dependencies = [
+    "apscheduler (>=3.11.2,<4.0.0)",
+    "flask (>=3.1.3,<4.0.0)",
+    "gpiozero (>=2.0.1,<3.0.0)",
+    "python-dateutil (>=2.9.0.post0,<3.0.0)",
+    "sqlalchemy (>=2.0.48,<3.0.0)",
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

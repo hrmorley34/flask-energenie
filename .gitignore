@@ -1,5 +1,8 @@
 # Config file
 config.json
+calendar_config.json
+*.db
+*.db-journal
 
 
 ### Python.gitignore

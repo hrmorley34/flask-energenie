@@ -1,22 +1,11 @@
 from flask import Flask, abort, render_template
-from gpiozero.boards import _EnergenieMaster
 
 from config import get_version, load_config
+from energenie_control import ENERGENIE_IDS, transmit, transmit_all
 
 app = Flask(__name__)
 CONFIG = load_config()
-ENERGENIE_IDS = (1, 2, 3, 4)
-CONTROLLER = _EnergenieMaster(pin_factory=None)
 VERSION = get_version()
-
-
-def transmit(socket: int, value: bool) -> None:
-    assert socket in ENERGENIE_IDS
-    CONTROLLER.transmit(socket, value)
-
-
-def transmit_all(value: bool) -> None:
-    CONTROLLER.transmit(5, value)
 
 
 @app.route("/")
