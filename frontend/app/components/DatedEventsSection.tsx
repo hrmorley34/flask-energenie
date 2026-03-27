@@ -86,9 +86,7 @@ export function DatedEventsSection({
                     className="w-full rounded border border-slate-300 bg-white px-2 py-1"
                     value={datedDraft.name}
                     onChange={(e) =>
-                      setDatedDraft((prev) =>
-                        prev ? { ...prev, name: e.target.value } : prev,
-                      )
+                      setDatedDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))
                     }
                   />
                 </td>
@@ -98,9 +96,7 @@ export function DatedEventsSection({
                     value={datedDraft.socket_id}
                     onChange={(e) =>
                       setDatedDraft((prev) =>
-                        prev
-                          ? { ...prev, socket_id: Number(e.target.value) }
-                          : prev,
+                        prev ? { ...prev, socket_id: Number(e.target.value) } : prev,
                       )
                     }
                   >
@@ -117,9 +113,7 @@ export function DatedEventsSection({
                     value={datedDraft.action}
                     onChange={(e) =>
                       setDatedDraft((prev) =>
-                        prev
-                          ? { ...prev, action: e.target.value as EventAction }
-                          : prev,
+                        prev ? { ...prev, action: e.target.value as EventAction } : prev,
                       )
                     }
                   >
@@ -188,11 +182,9 @@ export function DatedEventsSection({
             )}
 
             {datedSorted.map((event) => {
-              const isEditing =
-                editingDatedId === event.id && datedDraft !== null;
+              const isEditing = editingDatedId === event.id && datedDraft !== null;
               const isDeleting = deletingEventId === event.id;
-              const occurred =
-                event.trigger_at * 1000 < now || event.consumed_at !== null;
+              const occurred = event.trigger_at * 1000 < now || event.consumed_at !== null;
               const rowClass = !event.enabled
                 ? "bg-slate-100 text-slate-500"
                 : occurred
@@ -200,10 +192,7 @@ export function DatedEventsSection({
                   : "bg-white";
 
               return (
-                <tr
-                  key={event.id}
-                  className={`border-b border-slate-100 ${rowClass}`}
-                >
+                <tr key={event.id} className={`border-b border-slate-100 ${rowClass}`}>
                   <td className="px-2 py-2 text-center">
                     {isEditing ? (
                       <input
@@ -211,9 +200,7 @@ export function DatedEventsSection({
                         checked={datedDraft.enabled}
                         onChange={(e) =>
                           setDatedDraft((prev) =>
-                            prev
-                              ? { ...prev, enabled: e.target.checked }
-                              : prev,
+                            prev ? { ...prev, enabled: e.target.checked } : prev,
                           )
                         }
                       />
@@ -221,18 +208,14 @@ export function DatedEventsSection({
                       <input type="checkbox" checked={event.enabled} disabled />
                     )}
                   </td>
-                  <td
-                    className={`px-2 py-2 ${!event.name ? "text-slate-400" : ""}`}
-                  >
+                  <td className={`px-2 py-2 ${!event.name ? "text-slate-400" : ""}`}>
                     {isEditing ? (
                       <input
                         type="text"
                         className="w-full rounded border border-slate-300 bg-white px-2 py-1"
                         value={datedDraft.name}
                         onChange={(e) =>
-                          setDatedDraft((prev) =>
-                            prev ? { ...prev, name: e.target.value } : prev,
-                          )
+                          setDatedDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))
                         }
                       />
                     ) : (
@@ -286,8 +269,7 @@ export function DatedEventsSection({
                         <option value="reset">Reset</option>
                       </select>
                     ) : (
-                      event.action.charAt(0).toUpperCase() +
-                      event.action.slice(1)
+                      event.action.charAt(0).toUpperCase() + event.action.slice(1)
                     )}
                   </td>
                   <td className="px-2 py-2">
@@ -318,17 +300,13 @@ export function DatedEventsSection({
                       <input
                         type="datetime-local"
                         className="rounded border border-slate-300 bg-white px-2 py-1"
-                        value={unixToDateTimeLocal(
-                          Number(datedDraft.trigger_at),
-                        )}
+                        value={unixToDateTimeLocal(Number(datedDraft.trigger_at))}
                         onChange={(e) =>
                           setDatedDraft((prev) =>
                             prev
                               ? {
                                   ...prev,
-                                  trigger_at: dateTimeLocalToUnix(
-                                    e.target.value,
-                                  ),
+                                  trigger_at: dateTimeLocalToUnix(e.target.value),
                                 }
                               : prev,
                           )
@@ -386,10 +364,7 @@ export function DatedEventsSection({
             })}
             {!loading && datedSorted.length === 0 && (
               <tr>
-                <td
-                  colSpan={7}
-                  className="px-2 py-4 text-center text-sm text-slate-500"
-                >
+                <td colSpan={7} className="px-2 py-4 text-center text-sm text-slate-500">
                   No dated events.
                 </td>
               </tr>

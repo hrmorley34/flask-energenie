@@ -57,13 +57,7 @@ export type RepeatingEventWrite = Partial<
 export type DatedEventWrite = Partial<
   Pick<
     DatedEvent,
-    | "enabled"
-    | "socket_id"
-    | "trigger_at"
-    | "action"
-    | "priority"
-    | "name"
-    | "timezone"
+    "enabled" | "socket_id" | "trigger_at" | "action" | "priority" | "name" | "timezone"
   >
 >;
 
@@ -72,13 +66,8 @@ const API_URL = "";
 function parseErrorDetail(response: Response, payload: unknown): string {
   if (payload && typeof payload === "object") {
     const message =
-      "message" in payload && typeof payload.message === "string"
-        ? payload.message
-        : null;
-    const error =
-      "error" in payload && typeof payload.error === "string"
-        ? payload.error
-        : null;
+      "message" in payload && typeof payload.message === "string" ? payload.message : null;
+    const error = "error" in payload && typeof payload.error === "string" ? payload.error : null;
     if (message) {
       return message;
     }
@@ -149,13 +138,7 @@ export function updateRepeatingEvent(
 export function createRepeatingEvent(
   payload: Pick<
     RepeatingEvent,
-    | "name"
-    | "enabled"
-    | "socket_id"
-    | "action"
-    | "minutes_from_midnight"
-    | "days"
-    | "timezone"
+    "name" | "enabled" | "socket_id" | "action" | "minutes_from_midnight" | "days" | "timezone"
   > &
     Partial<Pick<RepeatingEvent, "priority">>,
 ): Promise<RepeatingEvent> {
@@ -171,10 +154,7 @@ export function deleteRepeatingEvent(id: number): Promise<void> {
   });
 }
 
-export function updateDatedEvent(
-  id: number,
-  payload: DatedEventWrite,
-): Promise<DatedEvent> {
+export function updateDatedEvent(id: number, payload: DatedEventWrite): Promise<DatedEvent> {
   return call<DatedEvent>(`/api/events/dated/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
@@ -182,10 +162,7 @@ export function updateDatedEvent(
 }
 
 export function createDatedEvent(
-  payload: Pick<
-    DatedEvent,
-    "name" | "enabled" | "socket_id" | "action" | "timezone"
-  > & {
+  payload: Pick<DatedEvent, "name" | "enabled" | "socket_id" | "action" | "timezone"> & {
     trigger_at: number | string;
     priority?: number;
   },

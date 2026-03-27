@@ -307,10 +307,7 @@ export function isEventActiveToday(
       continue;
     }
     const eventMinutes = eventDate.getHours() * 60 + eventDate.getMinutes();
-    if (
-      datedEvent.priority >= event.priority &&
-      eventMinutes > event.minutes_from_midnight
-    ) {
+    if (datedEvent.priority >= event.priority && eventMinutes > event.minutes_from_midnight) {
       return false;
     }
   }
@@ -318,10 +315,7 @@ export function isEventActiveToday(
   return true;
 }
 
-export function buildPeriods(
-  occurrences: EventOccurrence[],
-  dayEnd: number,
-): Period[] {
+export function buildPeriods(occurrences: EventOccurrence[], dayEnd: number): Period[] {
   if (occurrences.length === 0) {
     return [];
   }
@@ -345,9 +339,7 @@ export function buildPeriods(
   const sortedTimes = Array.from(timePoints).sort((a, b) => a - b);
 
   type ActiveOccurrence = EventOccurrence & { action: "on" | "off" };
-  const isActiveOccurrence = (
-    occurrence: EventOccurrence,
-  ): occurrence is ActiveOccurrence =>
+  const isActiveOccurrence = (occurrence: EventOccurrence): occurrence is ActiveOccurrence =>
     occurrence.action === "on" || occurrence.action === "off";
   const segmentStates: Map<number, ActiveOccurrence | null> = new Map();
 
@@ -390,8 +382,7 @@ export function buildPeriods(
     const isSameLogicalEvent =
       segmentEvent !== null &&
       currentEvent !== null &&
-      segmentEvent.name.split(" (carry)")[0] ===
-        currentEvent.name.split(" (carry)")[0] &&
+      segmentEvent.name.split(" (carry)")[0] === currentEvent.name.split(" (carry)")[0] &&
       segmentEvent.priority === currentEvent.priority &&
       segmentEvent.action === currentEvent.action;
 

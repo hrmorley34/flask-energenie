@@ -1,12 +1,7 @@
 import { Dispatch, SetStateAction } from "react";
 
 import { DAY_LABELS, RepeatingDraft } from "../page-types";
-import {
-  bitOn,
-  isEventActiveToday,
-  parseTimeToMinutes,
-  toTime,
-} from "../page-utils";
+import { bitOn, isEventActiveToday, parseTimeToMinutes, toTime } from "../page-utils";
 import { DatedEvent, EventAction, RepeatingEvent } from "../schedule-api";
 
 type RepeatingEventsSectionProps = {
@@ -98,9 +93,7 @@ export function RepeatingEventsSection({
                     className="w-full rounded border border-slate-300 bg-white px-2 py-1"
                     value={repeatingDraft.name}
                     onChange={(e) =>
-                      setRepeatingDraft((prev) =>
-                        prev ? { ...prev, name: e.target.value } : prev,
-                      )
+                      setRepeatingDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))
                     }
                   />
                 </td>
@@ -110,9 +103,7 @@ export function RepeatingEventsSection({
                     value={repeatingDraft.socket_id}
                     onChange={(e) =>
                       setRepeatingDraft((prev) =>
-                        prev
-                          ? { ...prev, socket_id: Number(e.target.value) }
-                          : prev,
+                        prev ? { ...prev, socket_id: Number(e.target.value) } : prev,
                       )
                     }
                   >
@@ -129,9 +120,7 @@ export function RepeatingEventsSection({
                     value={repeatingDraft.action}
                     onChange={(e) =>
                       setRepeatingDraft((prev) =>
-                        prev
-                          ? { ...prev, action: e.target.value as EventAction }
-                          : prev,
+                        prev ? { ...prev, action: e.target.value as EventAction } : prev,
                       )
                     }
                   >
@@ -167,9 +156,7 @@ export function RepeatingEventsSection({
                         prev
                           ? {
                               ...prev,
-                              minutes_from_midnight: parseTimeToMinutes(
-                                e.target.value,
-                              ),
+                              minutes_from_midnight: parseTimeToMinutes(e.target.value),
                             }
                           : prev,
                       )
@@ -177,10 +164,7 @@ export function RepeatingEventsSection({
                   />
                 </td>
                 {DAY_LABELS.map((_, idx) => (
-                  <td
-                    key={`new-repeat-${idx}`}
-                    className="px-2 py-2 text-center"
-                  >
+                  <td key={`new-repeat-${idx}`} className="px-2 py-2 text-center">
                     <input
                       type="checkbox"
                       checked={bitOn(repeatingDraft.days, idx)}
@@ -224,17 +208,11 @@ export function RepeatingEventsSection({
             )}
 
             {repeatingSorted.map((event) => {
-              const isEditing =
-                editingRepeatingId === event.id && repeatingDraft !== null;
+              const isEditing = editingRepeatingId === event.id && repeatingDraft !== null;
               const isDeleting = deletingEventId === event.id;
               const today = new Date();
               today.setHours(0, 0, 0, 0);
-              const occurredToday = isEventActiveToday(
-                event,
-                repeating,
-                dated,
-                today,
-              );
+              const occurredToday = isEventActiveToday(event, repeating, dated, today);
 
               const rowClass = !event.enabled
                 ? "bg-slate-100 text-slate-500"
@@ -243,10 +221,7 @@ export function RepeatingEventsSection({
                   : "bg-white";
 
               return (
-                <tr
-                  key={event.id}
-                  className={`border-b border-slate-100 ${rowClass}`}
-                >
+                <tr key={event.id} className={`border-b border-slate-100 ${rowClass}`}>
                   <td className="px-2 py-2 text-center">
                     {isEditing ? (
                       <input
@@ -254,9 +229,7 @@ export function RepeatingEventsSection({
                         checked={repeatingDraft.enabled}
                         onChange={(e) =>
                           setRepeatingDraft((prev) =>
-                            prev
-                              ? { ...prev, enabled: e.target.checked }
-                              : prev,
+                            prev ? { ...prev, enabled: e.target.checked } : prev,
                           )
                         }
                       />
@@ -264,9 +237,7 @@ export function RepeatingEventsSection({
                       <input type="checkbox" checked={event.enabled} disabled />
                     )}
                   </td>
-                  <td
-                    className={`px-2 py-2 ${!event.name ? "text-slate-400" : ""}`}
-                  >
+                  <td className={`px-2 py-2 ${!event.name ? "text-slate-400" : ""}`}>
                     {isEditing ? (
                       <input
                         type="text"
@@ -329,8 +300,7 @@ export function RepeatingEventsSection({
                         <option value="reset">Reset</option>
                       </select>
                     ) : (
-                      event.action.charAt(0).toUpperCase() +
-                      event.action.slice(1)
+                      event.action.charAt(0).toUpperCase() + event.action.slice(1)
                     )}
                   </td>
                   <td className="px-2 py-2">
@@ -367,9 +337,7 @@ export function RepeatingEventsSection({
                             prev
                               ? {
                                   ...prev,
-                                  minutes_from_midnight: parseTimeToMinutes(
-                                    e.target.value,
-                                  ),
+                                  minutes_from_midnight: parseTimeToMinutes(e.target.value),
                                 }
                               : prev,
                           )
@@ -380,10 +348,7 @@ export function RepeatingEventsSection({
                     )}
                   </td>
                   {DAY_LABELS.map((_, idx) => (
-                    <td
-                      key={`${event.id}-${idx}`}
-                      className="px-2 py-2 text-center"
-                    >
+                    <td key={`${event.id}-${idx}`} className="px-2 py-2 text-center">
                       {isEditing ? (
                         <input
                           type="checkbox"
@@ -401,11 +366,7 @@ export function RepeatingEventsSection({
                           }
                         />
                       ) : (
-                        <input
-                          type="checkbox"
-                          checked={bitOn(event.days, idx)}
-                          disabled
-                        />
+                        <input type="checkbox" checked={bitOn(event.days, idx)} disabled />
                       )}
                     </td>
                   ))}
@@ -457,10 +418,7 @@ export function RepeatingEventsSection({
             })}
             {!loading && repeatingSorted.length === 0 && (
               <tr>
-                <td
-                  colSpan={14}
-                  className="px-2 py-4 text-center text-sm text-slate-500"
-                >
+                <td colSpan={14} className="px-2 py-4 text-center text-sm text-slate-500">
                   No repeating events.
                 </td>
               </tr>

@@ -9,8 +9,7 @@ const geistSans = Geist({
 
 export const metadata: Metadata = {
   title: "Energenie Calendar Viewer",
-  description:
-    "Manage switch status, timeline, and scheduled Energenie events.",
+  description: "Manage switch status, timeline, and scheduled Energenie events.",
 };
 
 export default function RootLayout({

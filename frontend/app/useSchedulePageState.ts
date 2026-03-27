@@ -21,25 +21,15 @@ export function useSchedulePageState() {
   const [error, setError] = useState<string | null>(null);
   const [submittingRepeating, setSubmittingRepeating] = useState(false);
   const [submittingDated, setSubmittingDated] = useState(false);
-  const [deletingRepeatingId, setDeletingRepeatingId] = useState<number | null>(
-    null,
-  );
+  const [deletingRepeatingId, setDeletingRepeatingId] = useState<number | null>(null);
   const [deletingDatedId, setDeletingDatedId] = useState<number | null>(null);
   const [schedulerEnabled, setSchedulerEnabled] = useState(false);
-  const [statusTargets, setStatusTargets] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [statusTargets, setStatusTargets] = useState<Record<string, boolean>>({});
   const [repeating, setRepeating] = useState<RepeatingEvent[]>([]);
   const [dated, setDated] = useState<DatedEvent[]>([]);
-  const [editingRepeatingId, setEditingRepeatingId] = useState<
-    number | "new" | null
-  >(null);
-  const [repeatingDraft, setRepeatingDraft] = useState<RepeatingDraft | null>(
-    null,
-  );
-  const [editingDatedId, setEditingDatedId] = useState<number | "new" | null>(
-    null,
-  );
+  const [editingRepeatingId, setEditingRepeatingId] = useState<number | "new" | null>(null);
+  const [repeatingDraft, setRepeatingDraft] = useState<RepeatingDraft | null>(null);
+  const [editingDatedId, setEditingDatedId] = useState<number | "new" | null>(null);
   const [datedDraft, setDatedDraft] = useState<DatedDraft | null>(null);
 
   const days = useMemo(() => dayRange(), []);
@@ -165,20 +155,13 @@ export function useSchedulePageState() {
         const created = await createRepeatingEvent(repeatingDraft);
         setRepeating((prev) => [...prev, created]);
       } else if (typeof editingRepeatingId === "number") {
-        const updated = await updateRepeatingEvent(
-          editingRepeatingId,
-          repeatingDraft,
-        );
-        setRepeating((prev) =>
-          prev.map((event) => (event.id === updated.id ? updated : event)),
-        );
+        const updated = await updateRepeatingEvent(editingRepeatingId, repeatingDraft);
+        setRepeating((prev) => prev.map((event) => (event.id === updated.id ? updated : event)));
       }
       setEditingRepeatingId(null);
       setRepeatingDraft(null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to save repeating event",
-      );
+      setError(err instanceof Error ? err.message : "Failed to save repeating event");
     } finally {
       setSubmittingRepeating(false);
     }
@@ -202,9 +185,7 @@ export function useSchedulePageState() {
         setRepeatingDraft(null);
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to delete repeating event",
-      );
+      setError(err instanceof Error ? err.message : "Failed to delete repeating event");
     } finally {
       setDeletingRepeatingId(null);
     }
@@ -240,16 +221,12 @@ export function useSchedulePageState() {
         setDated((prev) => [...prev, created]);
       } else if (typeof editingDatedId === "number") {
         const updated = await updateDatedEvent(editingDatedId, datedDraft);
-        setDated((prev) =>
-          prev.map((event) => (event.id === updated.id ? updated : event)),
-        );
+        setDated((prev) => prev.map((event) => (event.id === updated.id ? updated : event)));
       }
       setEditingDatedId(null);
       setDatedDraft(null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to save dated event",
-      );
+      setError(err instanceof Error ? err.message : "Failed to save dated event");
     } finally {
       setSubmittingDated(false);
     }
@@ -273,19 +250,14 @@ export function useSchedulePageState() {
         setDatedDraft(null);
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to delete dated event",
-      );
+      setError(err instanceof Error ? err.message : "Failed to delete dated event");
     } finally {
       setDeletingDatedId(null);
     }
   }
 
   const repeatingSorted = useMemo(
-    () =>
-      [...repeating].sort(
-        (a, b) => a.minutes_from_midnight - b.minutes_from_midnight,
-      ),
+    () => [...repeating].sort((a, b) => a.minutes_from_midnight - b.minutes_from_midnight),
     [repeating],
   );
 

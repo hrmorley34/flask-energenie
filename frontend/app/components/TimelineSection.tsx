@@ -16,12 +16,7 @@ type TimelineSectionProps = {
   dated: DatedEvent[];
 };
 
-export function TimelineSection({
-  days,
-  devices,
-  repeating,
-  dated,
-}: TimelineSectionProps) {
+export function TimelineSection({ days, devices, repeating, dated }: TimelineSectionProps) {
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <h2
@@ -32,8 +27,8 @@ export function TimelineSection({
       </h2>
       <div className="mb-4" id="timeline-description">
         <p className="text-xs text-slate-500">
-          Time runs vertically once on the left. For each day, devices 1-4 are
-          shown in parallel side-by-side lanes.
+          Time runs vertically once on the left. For each day, devices 1-4 are shown in parallel
+          side-by-side lanes.
         </p>
       </div>
       <div
@@ -53,9 +48,7 @@ export function TimelineSection({
                 key={day.key}
                 className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1"
               >
-                <p className="text-center text-xs font-semibold text-slate-600">
-                  {day.label}
-                </p>
+                <p className="text-center text-xs font-semibold text-slate-600">{day.label}</p>
                 <div className="mt-1 grid grid-cols-4 gap-1">
                   {devices.map((device) => (
                     <p
@@ -102,18 +95,8 @@ export function TimelineSection({
 
                 <div className="relative grid h-full grid-cols-4 gap-1">
                   {devices.map((device) => {
-                    const carryOver = buildCarryOverOccurrence(
-                      day,
-                      device,
-                      repeating,
-                      dated,
-                    );
-                    const occurrences = buildOccurrences(
-                      day,
-                      device,
-                      repeating,
-                      dated,
-                    );
+                    const carryOver = buildCarryOverOccurrence(day, device, repeating, dated);
+                    const occurrences = buildOccurrences(day, device, repeating, dated);
                     const periods = buildPeriods(
                       carryOver ? [carryOver, ...occurrences] : occurrences,
                       day.end,
@@ -125,14 +108,8 @@ export function TimelineSection({
                         className="relative h-full rounded border border-slate-200 bg-slate-50/60"
                       >
                         {periods.map((period, index) => {
-                          const startMinute = minutesSinceDayStart(
-                            period.start,
-                            day.start,
-                          );
-                          const endMinute = minutesSinceDayStart(
-                            period.end,
-                            day.start,
-                          );
+                          const startMinute = minutesSinceDayStart(period.start, day.start);
+                          const endMinute = minutesSinceDayStart(period.end, day.start);
                           const top = startMinute * (DAY_HEIGHT_PX / 1440);
                           const height = Math.max(
                             8,
@@ -152,9 +129,7 @@ export function TimelineSection({
                               <p className="truncate font-semibold">
                                 {period.action.toUpperCase()}
                               </p>
-                              <p className="truncate">
-                                {formatTs(period.start)}
-                              </p>
+                              <p className="truncate">{formatTs(period.start)}</p>
                             </div>
                           );
                         })}

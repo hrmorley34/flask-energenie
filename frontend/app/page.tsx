@@ -55,12 +55,7 @@ export default function Home() {
 
         <CurrentStatusSection devices={DEVICES} statusTargets={statusTargets} />
 
-        <TimelineSection
-          days={days}
-          devices={DEVICES}
-          repeating={repeating}
-          dated={dated}
-        />
+        <TimelineSection days={days} devices={DEVICES} repeating={repeating} dated={dated} />
 
         <RepeatingEventsSection
           devices={DEVICES}

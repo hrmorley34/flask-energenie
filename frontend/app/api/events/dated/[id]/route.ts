@@ -6,18 +6,12 @@ type Params = {
   }>;
 };
 
-export async function PUT(
-  request: Request,
-  { params }: Params,
-): Promise<Response> {
+export async function PUT(request: Request, { params }: Params): Promise<Response> {
   const { id } = await params;
   return proxyToBackend(request, `/api/events/dated/${id}`);
 }
 
-export async function DELETE(
-  request: Request,
-  { params }: Params,
-): Promise<Response> {
+export async function DELETE(request: Request, { params }: Params): Promise<Response> {
   const { id } = await params;
   return proxyToBackend(request, `/api/events/dated/${id}`);
 }

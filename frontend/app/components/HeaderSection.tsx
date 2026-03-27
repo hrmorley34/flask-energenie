@@ -15,12 +15,8 @@ export function HeaderSection({
     <header className="mb-6 rounded-2xl border border-orange-200 bg-white/90 p-6 shadow-sm backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Energenie Calendar Viewer
-          </h1>
-          <p className="text-sm text-slate-600">
-            Single-page status, timeline, and event editor.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">Energenie Calendar Viewer</h1>
+          <p className="text-sm text-slate-600">Single-page status, timeline, and event editor.</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-medium">
