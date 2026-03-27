@@ -1,12 +1,14 @@
 type HeaderSectionProps = {
   schedulerEnabled: boolean;
   error: string | null;
+  isRefreshing: boolean;
   onRefresh: () => void;
 };
 
 export function HeaderSection({
   schedulerEnabled,
   error,
+  isRefreshing,
   onRefresh,
 }: HeaderSectionProps) {
   return (
@@ -27,9 +29,11 @@ export function HeaderSection({
           <button
             type="button"
             onClick={onRefresh}
+            aria-label="Refresh status and events"
+            disabled={isRefreshing}
             className="rounded-md border border-orange-300 bg-orange-100 px-3 py-1 text-xs font-medium text-orange-900 hover:bg-orange-200"
           >
-            Refresh
+            {isRefreshing ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </div>

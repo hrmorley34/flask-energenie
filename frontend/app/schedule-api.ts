@@ -69,6 +69,26 @@ export type DatedEventWrite = Partial<
 
 const API_URL = "";
 
+function parseErrorDetail(response: Response, payload: unknown): string {
+  if (payload && typeof payload === "object") {
+    const message =
+      "message" in payload && typeof payload.message === "string"
+        ? payload.message
+        : null;
+    const error =
+      "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : null;
+    if (message) {
+      return message;
+    }
+    if (error) {
+      return error;
+    }
+  }
+  return response.statusText || "Request failed";
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -79,15 +99,33 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
 
-  if (!response.ok) {
-    throw new Error(`API ${response.status}: ${response.statusText}`);
-  }
-
   if (response.status === 204) {
     return undefined as T;
   }
 
-  return (await response.json()) as T;
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+  const rawBody = await response.text();
+  let parsedBody: unknown = rawBody;
+
+  if (isJson && rawBody) {
+    try {
+      parsedBody = JSON.parse(rawBody);
+    } catch {
+      parsedBody = rawBody;
+    }
+  }
+
+  if (!response.ok) {
+    const detail = parseErrorDetail(response, parsedBody);
+    throw new Error(`API ${response.status}: ${detail}`);
+  }
+
+  if (!rawBody) {
+    return undefined as T;
+  }
+
+  return (isJson ? parsedBody : rawBody) as T;
 }
 
 export function fetchEvents(): Promise<EventsResponse> {

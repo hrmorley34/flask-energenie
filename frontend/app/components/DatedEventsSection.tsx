@@ -17,6 +17,8 @@ type DatedEventsSectionProps = {
   onStartEdit: (event: DatedEvent) => void;
   onSubmit: () => Promise<void>;
   onRemove: (eventId: number) => Promise<void>;
+  isSubmitting: boolean;
+  deletingEventId: number | null;
 };
 
 export function DatedEventsSection({
@@ -32,6 +34,8 @@ export function DatedEventsSection({
   onStartEdit,
   onSubmit,
   onRemove,
+  isSubmitting,
+  deletingEventId,
 }: DatedEventsSectionProps) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -42,6 +46,8 @@ export function DatedEventsSection({
         <button
           type="button"
           onClick={onStartNew}
+          aria-label="Add dated event"
+          disabled={isSubmitting || deletingEventId !== null}
           className="rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
         >
           +
@@ -161,9 +167,10 @@ export function DatedEventsSection({
                     <button
                       type="button"
                       onClick={() => void onSubmit()}
+                      disabled={isSubmitting}
                       className="rounded border border-emerald-400 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
                     >
-                      Submit
+                      {isSubmitting ? "Saving..." : "Submit"}
                     </button>
                     <button
                       type="button"
@@ -183,6 +190,7 @@ export function DatedEventsSection({
             {datedSorted.map((event) => {
               const isEditing =
                 editingDatedId === event.id && datedDraft !== null;
+              const isDeleting = deletingEventId === event.id;
               const occurred =
                 event.trigger_at * 1000 < now || event.consumed_at !== null;
               const rowClass = !event.enabled
@@ -336,9 +344,10 @@ export function DatedEventsSection({
                         <button
                           type="button"
                           onClick={() => void onSubmit()}
+                          disabled={isSubmitting}
                           className="rounded border border-emerald-400 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
                         >
-                          Submit
+                          {isSubmitting ? "Saving..." : "Submit"}
                         </button>
                         <button
                           type="button"
@@ -356,6 +365,7 @@ export function DatedEventsSection({
                         <button
                           type="button"
                           onClick={() => onStartEdit(event)}
+                          disabled={isSubmitting || deletingEventId !== null}
                           className="rounded border border-blue-300 bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-200"
                         >
                           Edit
@@ -363,9 +373,10 @@ export function DatedEventsSection({
                         <button
                           type="button"
                           onClick={() => void onRemove(event.id)}
+                          disabled={isSubmitting || deletingEventId !== null}
                           className="rounded border border-rose-300 bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-200"
                         >
-                          Delete
+                          {isDeleting ? "Deleting..." : "Delete"}
                         </button>
                       </div>
                     )}

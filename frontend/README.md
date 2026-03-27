@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Energenie Frontend
 
-## Getting Started
+Next.js frontend for viewing Energenie device status and managing repeating and dated schedule events.
 
-First, run the development server:
+## Requirements
+
+- Node.js 20+
+- npm 10+
+- Backend API available (default expected at `http://127.0.0.1:5001`)
+
+Set `BACKEND_API_URL` in `.env` to override the backend target used by frontend API proxy routes.
+
+## Local Development
+
+From `frontend/`:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run dev` - Start development server
+- `npm run lint` - Run ESLint checks
+- `npm run build` - Build production bundle
+- `npm run start` - Start production server
 
-## Learn More
+## Architecture
 
-To learn more about Next.js, take a look at the following resources:
+- `app/page.tsx`: View composition layer for dashboard sections
+- `app/useSchedulePageState.ts`: State orchestration, polling, CRUD handlers, and derived selectors
+- `app/schedule-api.ts`: Typed client wrappers for frontend API routes
+- `app/api/*`: Next.js API proxy routes forwarding to backend API
+- `app/components/*`: Presentational sections for header, status cards, timeline, and event tables
+- `app/page-utils.ts`: Scheduling and timeline computation helpers
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Data Flow
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Browser UI calls `schedule-api.ts` wrappers.
+2. Wrappers call frontend `/api/*` routes.
+3. Frontend routes proxy requests to backend API using `BACKEND_API_URL`.
+4. UI state is updated through `useSchedulePageState` handlers.
 
-## Deploy on Vercel
+## Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Status polling is visibility-aware and uses bounded backoff for transient failures.
+- CRUD actions keep drafts during failed saves to avoid losing user edits.
+- Delete actions require confirmation.

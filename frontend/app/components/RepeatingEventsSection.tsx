@@ -23,6 +23,8 @@ type RepeatingEventsSectionProps = {
   onStartEdit: (event: RepeatingEvent) => void;
   onSubmit: () => Promise<void>;
   onRemove: (eventId: number) => Promise<void>;
+  isSubmitting: boolean;
+  deletingEventId: number | null;
 };
 
 export function RepeatingEventsSection({
@@ -39,6 +41,8 @@ export function RepeatingEventsSection({
   onStartEdit,
   onSubmit,
   onRemove,
+  isSubmitting,
+  deletingEventId,
 }: RepeatingEventsSectionProps) {
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -49,6 +53,8 @@ export function RepeatingEventsSection({
         <button
           type="button"
           onClick={onStartNew}
+          aria-label="Add repeating event"
+          disabled={isSubmitting || deletingEventId !== null}
           className="rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
         >
           +
@@ -197,9 +203,10 @@ export function RepeatingEventsSection({
                     <button
                       type="button"
                       onClick={() => void onSubmit()}
+                      disabled={isSubmitting}
                       className="rounded border border-emerald-400 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
                     >
-                      Submit
+                      {isSubmitting ? "Saving..." : "Submit"}
                     </button>
                     <button
                       type="button"
@@ -219,6 +226,7 @@ export function RepeatingEventsSection({
             {repeatingSorted.map((event) => {
               const isEditing =
                 editingRepeatingId === event.id && repeatingDraft !== null;
+              const isDeleting = deletingEventId === event.id;
               const today = new Date();
               today.setHours(0, 0, 0, 0);
               const occurredToday = isEventActiveToday(
@@ -407,9 +415,10 @@ export function RepeatingEventsSection({
                         <button
                           type="button"
                           onClick={() => void onSubmit()}
+                          disabled={isSubmitting}
                           className="rounded border border-emerald-400 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
                         >
-                          Submit
+                          {isSubmitting ? "Saving..." : "Submit"}
                         </button>
                         <button
                           type="button"
@@ -427,6 +436,7 @@ export function RepeatingEventsSection({
                         <button
                           type="button"
                           onClick={() => onStartEdit(event)}
+                          disabled={isSubmitting || deletingEventId !== null}
                           className="rounded border border-blue-300 bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-200"
                         >
                           Edit
@@ -434,9 +444,10 @@ export function RepeatingEventsSection({
                         <button
                           type="button"
                           onClick={() => void onRemove(event.id)}
+                          disabled={isSubmitting || deletingEventId !== null}
                           className="rounded border border-rose-300 bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-200"
                         >
-                          Delete
+                          {isDeleting ? "Deleting..." : "Delete"}
                         </button>
                       </div>
                     )}

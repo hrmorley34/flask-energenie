@@ -24,16 +24,25 @@ export function TimelineSection({
 }: TimelineSectionProps) {
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <h2
+        id="timeline-heading"
+        className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500"
+      >
         7 Day Event Timeline
       </h2>
-      <div className="mb-4">
+      <div className="mb-4" id="timeline-description">
         <p className="text-xs text-slate-500">
           Time runs vertically once on the left. For each day, devices 1-4 are
           shown in parallel side-by-side lanes.
         </p>
       </div>
-      <div className="max-h-[72vh] overflow-auto">
+      <div
+        className="max-h-[72vh] overflow-auto"
+        role="region"
+        aria-labelledby="timeline-heading"
+        aria-describedby="timeline-description"
+        tabIndex={0}
+      >
         <div className="min-w-[1200px] space-y-2">
           <div className="grid grid-cols-[58px_repeat(7,minmax(150px,1fr))] gap-2">
             <div className="rounded-md border border-slate-200 bg-slate-50 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
