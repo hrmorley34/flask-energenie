@@ -3,7 +3,6 @@ from gpiozero.boards import _EnergenieMaster
 
 from config import get_version, load_config
 
-
 app = Flask(__name__)
 CONFIG = load_config()
 ENERGENIE_IDS = (1, 2, 3, 4)

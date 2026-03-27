@@ -1,8 +1,7 @@
 import json
-from pathlib import Path
 import traceback
+from pathlib import Path
 from typing import Optional
-
 
 Base = ...
 StringsDict = ...
