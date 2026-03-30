@@ -280,7 +280,7 @@ export function isEventActiveToday(
   if (event.last_triggered) {
     const todayStart = new Date(today);
     todayStart.setHours(0, 0, 0, 0);
-    if (new Date(event.last_triggered).getTime() < todayStart.getTime()) {
+    if (event.last_triggered * 1000 < todayStart.getTime()) {
       return false;
     }
   }

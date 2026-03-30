@@ -20,15 +20,22 @@ ActionType = Literal["on", "off", "reset"]
 ACTIONS: set[ActionType] = {"on", "off", "reset"}
 
 
-def utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def utcnow_timestamp() -> int:
+    return int(datetime.now(timezone.utc).timestamp())
 
 
 class Base(DeclarativeBase):
     pass
 
 
-class RepeatingEvent(Base):
+class TimestampedEventBase(Base):
+    __abstract__ = True
+
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class RepeatingEvent(TimestampedEventBase):
     __tablename__ = "events_repeating"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -44,10 +51,7 @@ class RepeatingEvent(Base):
 
     timezone: Mapped[str] = mapped_column(String, nullable=False)
 
-    last_triggered: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    created_at: Mapped[str] = mapped_column(String, nullable=False)
-    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    last_triggered: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     @property
     def days_list(self) -> list[bool]:
@@ -93,7 +97,7 @@ class RepeatingEvent(Base):
         }
 
 
-class DatedEvent(Base):
+class DatedEvent(TimestampedEventBase):
     __tablename__ = "events_dated"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -108,10 +112,7 @@ class DatedEvent(Base):
 
     timezone: Mapped[str] = mapped_column(String, nullable=False)
 
-    consumed_at: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    created_at: Mapped[str] = mapped_column(String, nullable=False)
-    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    consumed_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -236,7 +237,7 @@ class CalendarStore:
             return session.get(DatedEvent, event_id)
 
     def create_repeating_event(self, payload: dict[str, Any]) -> dict[str, Any]:
-        now = utcnow_iso()
+        now = utcnow_timestamp()
         with self.session_factory() as session:
             event = RepeatingEvent(
                 name=payload["name"],
@@ -256,7 +257,7 @@ class CalendarStore:
             return event.serialise()
 
     def create_dated_event(self, payload: dict[str, Any]) -> dict[str, Any]:
-        now = utcnow_iso()
+        now = utcnow_timestamp()
         with self.session_factory() as session:
             event = DatedEvent(
                 name=payload["name"],
@@ -285,7 +286,7 @@ class CalendarStore:
             for key, value in payload.items():
                 if hasattr(event, key):
                     setattr(event, key, value)
-            event.updated_at = utcnow_iso()
+            event.updated_at = utcnow_timestamp()
 
             session.commit()
             return event.serialise()
@@ -301,7 +302,7 @@ class CalendarStore:
             for key, value in payload.items():
                 if hasattr(event, key):
                     setattr(event, key, value)
-            event.updated_at = utcnow_iso()
+            event.updated_at = utcnow_timestamp()
 
             session.commit()
             return event.serialise()
@@ -393,10 +394,10 @@ class CalendarStore:
                         event,
                     )
                 if isinstance(event, RepeatingEvent):
-                    event.last_triggered = now_utc.isoformat()
+                    event.last_triggered = int(now_utc.timestamp())
                 else:
-                    event.consumed_at = now_utc.isoformat()
-                event.updated_at = now_utc.isoformat()
+                    event.consumed_at = int(now_utc.timestamp())
+                event.updated_at = int(now_utc.timestamp())
 
             for socket_id, pr in priorities.items():
                 if not pr:

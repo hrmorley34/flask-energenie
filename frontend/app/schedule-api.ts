@@ -11,9 +11,9 @@ export type RepeatingEvent = {
   minutes_from_midnight: number;
   days: number;
   timezone: string;
-  created_at: string;
-  updated_at: string;
-  last_triggered: string | null;
+  created_at: number;
+  updated_at: number;
+  last_triggered: number | null;
 };
 
 export type DatedEvent = {
@@ -26,9 +26,9 @@ export type DatedEvent = {
   action: EventAction;
   trigger_at: number;
   timezone: string;
-  consumed_at: string | null;
-  created_at: string;
-  updated_at: string;
+  consumed_at: number | null;
+  created_at: number;
+  updated_at: number;
 };
 
 export type EventsResponse = {
