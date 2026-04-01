@@ -18,6 +18,8 @@ type RepeatingEventsSectionProps = {
   onStartEdit: (event: RepeatingEvent) => void;
   onSubmit: () => Promise<void>;
   onRemove: (eventId: number) => Promise<void>;
+  writableOwnerId: number | null;
+  writableOwnerConfigured: boolean;
   isSubmitting: boolean;
   deletingEventId: number | null;
 };
@@ -36,9 +38,13 @@ export function RepeatingEventsSection({
   onStartEdit,
   onSubmit,
   onRemove,
+  writableOwnerId,
+  writableOwnerConfigured,
   isSubmitting,
   deletingEventId,
 }: RepeatingEventsSectionProps) {
+  const canCreate = writableOwnerConfigured;
+
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -49,7 +55,8 @@ export function RepeatingEventsSection({
           type="button"
           onClick={onStartNew}
           aria-label="Add repeating event"
-          disabled={isSubmitting || deletingEventId !== null}
+          disabled={!canCreate || isSubmitting || deletingEventId !== null}
+          title={!canCreate ? "Writable owner is not configured" : undefined}
           className="rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
         >
           +
@@ -65,6 +72,7 @@ export function RepeatingEventsSection({
               <th className="px-2 py-2">Action</th>
               <th className="px-2 py-2">Priority</th>
               <th className="px-2 py-2">Time</th>
+              <th className="px-2 py-2">Owner</th>
               {DAY_LABELS.map((label) => (
                 <th key={label} className="px-2 py-2 text-center">
                   {label}
@@ -163,6 +171,7 @@ export function RepeatingEventsSection({
                     }
                   />
                 </td>
+                <td className="px-2 py-2 text-slate-500">Owner {writableOwnerId ?? "?"}</td>
                 {DAY_LABELS.map((_, idx) => (
                   <td key={`new-repeat-${idx}`} className="px-2 py-2 text-center">
                     <input
@@ -210,6 +219,7 @@ export function RepeatingEventsSection({
             {repeatingSorted.map((event) => {
               const isEditing = editingRepeatingId === event.id && repeatingDraft !== null;
               const isDeleting = deletingEventId === event.id;
+              const canMutate = writableOwnerId !== null && event.owner.id === writableOwnerId;
               const today = new Date();
               today.setHours(0, 0, 0, 0);
               const occurredToday = isEventActiveToday(event, repeating, dated, today);
@@ -347,6 +357,9 @@ export function RepeatingEventsSection({
                       toTime(event.minutes_from_midnight)
                     )}
                   </td>
+                  <td className="px-2 py-2 text-xs text-slate-600">
+                    {event.owner.name} ({event.owner.id})
+                  </td>
                   {DAY_LABELS.map((_, idx) => (
                     <td key={`${event.id}-${idx}`} className="px-2 py-2 text-center">
                       {isEditing ? (
@@ -397,16 +410,28 @@ export function RepeatingEventsSection({
                         <button
                           type="button"
                           onClick={() => onStartEdit(event)}
-                          disabled={isSubmitting || deletingEventId !== null}
-                          className="rounded border border-blue-300 bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-200"
+                          disabled={!canMutate || isSubmitting || deletingEventId !== null}
+                          title={!canMutate ? "Read-only event for configured owner" : undefined}
+                          className={
+                            "rounded border px-2 py-1 text-xs font-semibold " +
+                            (!canMutate
+                              ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                              : "border-blue-300 bg-blue-100 text-blue-800 hover:bg-blue-200")
+                          }
                         >
                           Edit
                         </button>
                         <button
                           type="button"
                           onClick={() => void onRemove(event.id)}
-                          disabled={isSubmitting || deletingEventId !== null}
-                          className="rounded border border-rose-300 bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-200"
+                          disabled={!canMutate || isSubmitting || deletingEventId !== null}
+                          title={!canMutate ? "Read-only event for configured owner" : undefined}
+                          className={
+                            "rounded border px-2 py-1 text-xs font-semibold " +
+                            (!canMutate
+                              ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                              : "border-rose-300 bg-rose-100 text-rose-800 hover:bg-rose-200")
+                          }
                         >
                           {isDeleting ? "Deleting..." : "Delete"}
                         </button>
@@ -418,7 +443,7 @@ export function RepeatingEventsSection({
             })}
             {!loading && repeatingSorted.length === 0 && (
               <tr>
-                <td colSpan={14} className="px-2 py-4 text-center text-sm text-slate-500">
+                <td colSpan={15} className="px-2 py-4 text-center text-sm text-slate-500">
                   No repeating events.
                 </td>
               </tr>

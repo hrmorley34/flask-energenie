@@ -14,6 +14,8 @@ export default function Home() {
     error,
     schedulerEnabled,
     statusTargets,
+    ownerIds,
+    writableOwnerId,
     days,
     repeating,
     dated,
@@ -28,6 +30,7 @@ export default function Home() {
     submittingDated,
     deletingRepeatingId,
     deletingDatedId,
+    writableOwnerConfigured,
     refresh,
     startNewRepeating,
     startEditRepeating,
@@ -49,6 +52,9 @@ export default function Home() {
         <HeaderSection
           schedulerEnabled={schedulerEnabled}
           error={error}
+          ownerIds={ownerIds}
+          writableOwnerId={writableOwnerId}
+          writableOwnerConfigured={writableOwnerConfigured}
           isRefreshing={loading}
           onRefresh={() => void refresh()}
         />
@@ -71,6 +77,8 @@ export default function Home() {
           onStartEdit={startEditRepeating}
           onSubmit={submitRepeating}
           onRemove={removeRepeating}
+          writableOwnerId={writableOwnerId}
+          writableOwnerConfigured={writableOwnerConfigured}
           isSubmitting={submittingRepeating}
           deletingEventId={deletingRepeatingId}
         />
@@ -88,6 +96,8 @@ export default function Home() {
           onStartEdit={startEditDated}
           onSubmit={submitDated}
           onRemove={removeDated}
+          writableOwnerId={writableOwnerId}
+          writableOwnerConfigured={writableOwnerConfigured}
           isSubmitting={submittingDated}
           deletingEventId={deletingDatedId}
         />

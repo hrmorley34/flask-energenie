@@ -16,7 +16,7 @@ from .database import (
 )
 from .scheduler import CalendarScheduler
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 def _json_error(message: str, status: int):
@@ -54,6 +54,22 @@ def create_app() -> Flask:
         if calendar_config["scheduler_enabled"]:
             scheduler.rebuild_jobs()
 
+    @app.get("/api/owners")
+    def list_owners():
+        return jsonify([owner.serialise() for owner in store.list_owners()])
+
+    @app.get("/api/owners/by-name/<string:name>")  # ?[create=true]
+    def get_owner_by_name(name: str):
+        create_if_missing = request.args.get("create", "").lower() == "true"
+        if create_if_missing:
+            owner = store.ensure_owner_by_name(name)
+        else:
+            owner = store.get_owner_by_name(name)
+            if owner is None:
+                return _json_error("Owner not found", 404)
+
+        return jsonify(owner.serialise())
+
     @app.get("/api/events")
     def list_events():
         repeating, dated = store.list_events()
@@ -68,8 +84,8 @@ def create_app() -> Flask:
     def list_repeating_events():
         return jsonify([e.serialise() for e in store.list_repeating_events()])
 
-    @app.post("/api/events/repeating")
-    def create_repeating_event():
+    @app.post("/api/owners/<int:owner_id>/events/repeating")
+    def create_repeating_event(owner_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
             validated = validate_repeating_payload(payload, partial=False)
@@ -77,12 +93,12 @@ def create_app() -> Flask:
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
-        event = store.create_repeating_event(validated)
+        event = store.create_repeating_event(owner_id, validated)
         rebuild_scheduler_if_enabled()
-        return jsonify(event), 201
+        return jsonify(event.serialise()), 201
 
-    @app.put("/api/events/repeating/<int:event_id>")
-    def update_repeating_event(event_id: int):
+    @app.put("/api/owners/<int:owner_id>/events/repeating/<int:event_id>")
+    def update_repeating_event(owner_id: int, event_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
             validated = validate_repeating_payload(payload, partial=True)
@@ -91,16 +107,16 @@ def create_app() -> Flask:
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
-        event = store.update_repeating_event(event_id, validated)
+        event = store.update_repeating_event(owner_id, event_id, validated)
         if event is None:
             return _json_error("Repeating event not found", 404)
 
         rebuild_scheduler_if_enabled()
-        return jsonify(event)
+        return jsonify(event.serialise())
 
-    @app.delete("/api/events/repeating/<int:event_id>")
-    def delete_repeating_event(event_id: int):
-        deleted = store.delete_repeating_event(event_id)
+    @app.delete("/api/owners/<int:owner_id>/events/repeating/<int:event_id>")
+    def delete_repeating_event(owner_id: int, event_id: int):
+        deleted = store.delete_repeating_event(owner_id, event_id)
         if not deleted:
             return _json_error("Repeating event not found", 404)
 
@@ -111,8 +127,8 @@ def create_app() -> Flask:
     def list_dated_events():
         return jsonify([e.serialise() for e in store.list_dated_events()])
 
-    @app.post("/api/events/dated")
-    def create_dated_event():
+    @app.post("/api/owners/<int:owner_id>/events/dated")
+    def create_dated_event(owner_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
             validated = validate_dated_payload(payload, partial=False)
@@ -120,12 +136,12 @@ def create_app() -> Flask:
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
-        event = store.create_dated_event(validated)
+        event = store.create_dated_event(owner_id, validated)
         rebuild_scheduler_if_enabled()
-        return jsonify(event), 201
+        return jsonify(event.serialise()), 201
 
-    @app.put("/api/events/dated/<int:event_id>")
-    def update_dated_event(event_id: int):
+    @app.put("/api/owners/<int:owner_id>/events/dated/<int:event_id>")
+    def update_dated_event(owner_id: int, event_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
             validated = validate_dated_payload(payload, partial=True)
@@ -134,16 +150,16 @@ def create_app() -> Flask:
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
-        event = store.update_dated_event(event_id, validated)
+        event = store.update_dated_event(owner_id, event_id, validated)
         if event is None:
             return _json_error("Dated event not found", 404)
 
         rebuild_scheduler_if_enabled()
-        return jsonify(event)
+        return jsonify(event.serialise())
 
-    @app.delete("/api/events/dated/<int:event_id>")
-    def delete_dated_event(event_id: int):
-        deleted = store.delete_dated_event(event_id)
+    @app.delete("/api/owners/<int:owner_id>/events/dated/<int:event_id>")
+    def delete_dated_event(owner_id: int, event_id: int):
+        deleted = store.delete_dated_event(owner_id, event_id)
         if not deleted:
             return _json_error("Dated event not found", 404)
 

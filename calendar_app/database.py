@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, ForeignKey, Integer, String, create_engine, sele
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
+    declared_attr,
     mapped_column,
     relationship,
     sessionmaker,
@@ -25,25 +26,73 @@ def utcnow_timestamp() -> int:
 
 
 class Base(DeclarativeBase):
-    pass
+    def serialise(self) -> dict[str, Any]:
+        return {}
 
 
-class TimestampedEventBase(Base):
+class TimestampedBase(Base):
     __abstract__ = True
 
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    def serialise(self) -> dict[str, Any]:
+        return {
+            **super().serialise(),
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
 
-class RepeatingEvent(TimestampedEventBase):
+
+class EventOwner(Base):
+    __tablename__ = "event_owners"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+
+    def serialise(self) -> dict[str, Any]:
+        return {
+            **super().serialise(),
+            "id": self.id,
+            "name": self.name,
+        }
+
+
+class EventBase(TimestampedBase):
+    __abstract__ = True
+
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    owner_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("event_owners.id"), nullable=False
+    )
+
+    @declared_attr
+    @classmethod
+    def owner(cls) -> Mapped[EventOwner]:
+        return relationship("EventOwner", lazy="joined")
+
+    socket_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[ActionType] = mapped_column(String, nullable=False)
+
+    def serialise(self) -> dict[str, Any]:
+        return {
+            **super().serialise(),
+            "name": self.name,
+            "enabled": self.enabled,
+            "socket_id": self.socket_id,
+            "priority": self.priority,
+            "action": self.action,
+            "owner": self.owner.serialise(),
+        }
+
+
+class RepeatingEvent(EventBase):
     __tablename__ = "events_repeating"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str | None] = mapped_column(String, nullable=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    socket_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    action: Mapped[ActionType] = mapped_column(String, nullable=False)
     minutes_from_midnight: Mapped[int] = mapped_column(Integer, nullable=False)
 
     days: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -81,31 +130,20 @@ class RepeatingEvent(TimestampedEventBase):
 
     def serialise(self) -> dict[str, Any]:
         return {
+            **super().serialise(),
             "type": TYPE_REPEATING,
             "id": self.id,
-            "name": self.name,
-            "enabled": self.enabled,
-            "socket_id": self.socket_id,
-            "priority": self.priority,
-            "action": self.action,
             "minutes_from_midnight": self.minutes_from_midnight,
             "days": self.days,
             "timezone": self.timezone,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
             "last_triggered": self.last_triggered,
         }
 
 
-class DatedEvent(TimestampedEventBase):
+class DatedEvent(EventBase):
     __tablename__ = "events_dated"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str | None] = mapped_column(String, nullable=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    socket_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    action: Mapped[ActionType] = mapped_column(String, nullable=False)
 
     trigger_at: Mapped[int] = mapped_column(Integer, nullable=False)
     "UNIX timestamp of when the event should trigger."
@@ -124,18 +162,12 @@ class DatedEvent(TimestampedEventBase):
 
     def serialise(self) -> dict[str, Any]:
         return {
+            **super().serialise(),
             "type": TYPE_DATED,
             "id": self.id,
-            "name": self.name,
-            "enabled": self.enabled,
-            "socket_id": self.socket_id,
-            "priority": self.priority,
-            "action": self.action,
             "trigger_at": self.trigger_at,
             "timezone": self.timezone,
             "consumed_at": self.consumed_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
         }
 
 
@@ -193,6 +225,24 @@ class PriorityState(Base):
         cascade="all, delete",
     )
 
+    @property
+    def owner_id(self) -> int | None:
+        if self.repeating_event is not None:
+            return self.repeating_event.owner_id
+        elif self.dated_event is not None:
+            return self.dated_event.owner_id
+        else:
+            return None
+
+    @property
+    def owner(self) -> EventOwner | None:
+        if self.repeating_event is not None:
+            return self.repeating_event.owner
+        elif self.dated_event is not None:
+            return self.dated_event.owner
+        else:
+            return None
+
 
 class CalendarStore:
     def __init__(self, url: str, *, enginekwargs: dict[str, Any] = {}) -> None:
@@ -201,6 +251,28 @@ class CalendarStore:
 
     def init_db(self) -> None:
         Base.metadata.create_all(self.engine)
+        with self.session_factory() as session:
+            if session.scalars(select(EventOwner)).first() is None:
+                # Create a default owner for manually added events
+                session.add(EventOwner(name="manual"))
+                session.commit()
+
+    def list_owners(self) -> Sequence[EventOwner]:
+        with self.session_factory() as session:
+            return session.scalars(select(EventOwner)).all()
+
+    def get_owner_by_name(self, name: str) -> EventOwner | None:
+        with self.session_factory() as session:
+            return session.scalar(select(EventOwner).filter(EventOwner.name == name))
+
+    def ensure_owner_by_name(self, name: str) -> EventOwner:
+        with self.session_factory() as session:
+            owner = session.scalar(select(EventOwner).filter(EventOwner.name == name))
+            if owner is None:
+                owner = EventOwner(name=name)
+                session.add(owner)
+                session.commit()
+            return owner
 
     def list_events(self) -> tuple[Sequence[RepeatingEvent], Sequence[DatedEvent]]:
         with self.session_factory() as session:
@@ -236,52 +308,60 @@ class CalendarStore:
         with self.session_factory() as session:
             return session.get(DatedEvent, event_id)
 
-    def create_repeating_event(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def create_repeating_event(
+        self, owner_id: int, payload: dict[str, Any]
+    ) -> RepeatingEvent:
         now = utcnow_timestamp()
         with self.session_factory() as session:
             event = RepeatingEvent(
+                created_at=now,
+                updated_at=now,
                 name=payload["name"],
                 enabled=payload.get("enabled", True),
                 socket_id=payload["socket_id"],
                 priority=payload.get("priority", 0),
                 action=payload["action"],
+                owner_id=owner_id,
                 minutes_from_midnight=payload["minutes_from_midnight"],
                 days=payload["days"],
                 timezone=payload["timezone"],
-                created_at=now,
-                updated_at=now,
                 last_triggered=None,
             )
             session.add(event)
             session.commit()
-            return event.serialise()
+            session.refresh(event)  # force population of relationships
+            return event
 
-    def create_dated_event(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def create_dated_event(self, owner_id: int, payload: dict[str, Any]) -> DatedEvent:
         now = utcnow_timestamp()
         with self.session_factory() as session:
             event = DatedEvent(
+                created_at=now,
+                updated_at=now,
                 name=payload["name"],
                 enabled=payload.get("enabled", True),
                 socket_id=payload["socket_id"],
                 priority=payload.get("priority", 0),
                 action=payload["action"],
+                owner_id=owner_id,
                 trigger_at=payload["trigger_at"],
                 timezone=payload["timezone"],
                 consumed_at=None,
-                created_at=now,
-                updated_at=now,
             )
             session.add(event)
             session.commit()
-            return event.serialise()
+            session.refresh(event)  # force population of relationships
+            return event
 
     def update_repeating_event(
-        self, event_id: int, payload: dict[str, Any]
-    ) -> dict[str, Any] | None:
+        self, owner_id: int, event_id: int, payload: dict[str, Any]
+    ) -> RepeatingEvent | None:
         with self.session_factory() as session:
             event = session.get(RepeatingEvent, event_id)
             if event is None:
                 return None
+            if event.owner_id != owner_id:
+                raise ValueError("Incorrect owner_id for event")
 
             for key, value in payload.items():
                 if hasattr(event, key):
@@ -289,15 +369,17 @@ class CalendarStore:
             event.updated_at = utcnow_timestamp()
 
             session.commit()
-            return event.serialise()
+            return event
 
     def update_dated_event(
-        self, event_id: int, payload: dict[str, Any]
-    ) -> dict[str, Any] | None:
+        self, owner_id: int, event_id: int, payload: dict[str, Any]
+    ) -> DatedEvent | None:
         with self.session_factory() as session:
             event = session.get(DatedEvent, event_id)
             if event is None:
                 return None
+            if event.owner_id != owner_id:
+                raise ValueError("Incorrect owner_id for event")
 
             for key, value in payload.items():
                 if hasattr(event, key):
@@ -305,22 +387,26 @@ class CalendarStore:
             event.updated_at = utcnow_timestamp()
 
             session.commit()
-            return event.serialise()
+            return event
 
-    def delete_repeating_event(self, event_id: int) -> bool:
+    def delete_repeating_event(self, owner_id: int, event_id: int) -> bool:
         with self.session_factory() as session:
             event = session.get(RepeatingEvent, event_id)
             if event is None:
                 return False
+            if event.owner_id != owner_id:
+                raise ValueError("Incorrect owner_id for event")
             session.delete(event)
             session.commit()
             return True
 
-    def delete_dated_event(self, event_id: int) -> bool:
+    def delete_dated_event(self, owner_id: int, event_id: int) -> bool:
         with self.session_factory() as session:
             event = session.get(DatedEvent, event_id)
             if event is None:
                 return False
+            if event.owner_id != owner_id:
+                raise ValueError("Incorrect owner_id for event")
             session.delete(event)
             session.commit()
             return True

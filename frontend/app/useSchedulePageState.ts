@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { DatedDraft, RepeatingDraft } from "./page-types";
+import { getWritableOwnerIdFromPublicEnv } from "./owner-config";
 import { datedToDraft, dayRange, repeatingToDraft } from "./page-utils";
 import {
   createDatedEvent,
@@ -33,6 +34,24 @@ export function useSchedulePageState() {
   const [datedDraft, setDatedDraft] = useState<DatedDraft | null>(null);
 
   const days = useMemo(() => dayRange(), []);
+  const writableOwnerId = getWritableOwnerIdFromPublicEnv();
+
+  const ownerIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...repeating.map((event) => event.owner.id),
+          ...dated.map((event) => event.owner.id),
+        ]),
+      ).sort((a, b) => a - b),
+    [repeating, dated],
+  );
+
+  const writableOwnerConfigured = writableOwnerId !== null;
+
+  function canWriteOwner(ownerId: number): boolean {
+    return writableOwnerId !== null && ownerId === writableOwnerId;
+  }
 
   async function refresh(): Promise<void> {
     setLoading(true);
@@ -126,6 +145,10 @@ export function useSchedulePageState() {
   );
 
   function startNewRepeating() {
+    if (!writableOwnerConfigured) {
+      setError("Writable owner is not configured");
+      return;
+    }
     setEditingRepeatingId("new");
     setRepeatingDraft({
       enabled: true,
@@ -140,6 +163,10 @@ export function useSchedulePageState() {
   }
 
   function startEditRepeating(event: RepeatingEvent) {
+    if (!canWriteOwner(event.owner.id)) {
+      setError("This event is read-only for the configured owner");
+      return;
+    }
     setEditingRepeatingId(event.id);
     setRepeatingDraft(repeatingToDraft(event));
   }
@@ -152,9 +179,16 @@ export function useSchedulePageState() {
     setSubmittingRepeating(true);
     try {
       if (editingRepeatingId === "new") {
+        if (!writableOwnerConfigured) {
+          throw new Error("Writable owner is not configured");
+        }
         const created = await createRepeatingEvent(repeatingDraft);
         setRepeating((prev) => [...prev, created]);
       } else if (typeof editingRepeatingId === "number") {
+        const existing = repeating.find((event) => event.id === editingRepeatingId);
+        if (!existing || !canWriteOwner(existing.owner.id)) {
+          throw new Error("This event is read-only for the configured owner");
+        }
         const updated = await updateRepeatingEvent(editingRepeatingId, repeatingDraft);
         setRepeating((prev) => prev.map((event) => (event.id === updated.id ? updated : event)));
       }
@@ -178,6 +212,10 @@ export function useSchedulePageState() {
     setError(null);
     setDeletingRepeatingId(eventId);
     try {
+      const existing = repeating.find((event) => event.id === eventId);
+      if (!existing || !canWriteOwner(existing.owner.id)) {
+        throw new Error("This event is read-only for the configured owner");
+      }
       await deleteRepeatingEvent(eventId);
       setRepeating((prev) => prev.filter((event) => event.id !== eventId));
       if (editingRepeatingId === eventId) {
@@ -192,6 +230,10 @@ export function useSchedulePageState() {
   }
 
   function startNewDated() {
+    if (!writableOwnerConfigured) {
+      setError("Writable owner is not configured");
+      return;
+    }
     setEditingDatedId("new");
     setDatedDraft({
       enabled: true,
@@ -205,6 +247,10 @@ export function useSchedulePageState() {
   }
 
   function startEditDated(event: DatedEvent) {
+    if (!canWriteOwner(event.owner.id)) {
+      setError("This event is read-only for the configured owner");
+      return;
+    }
     setEditingDatedId(event.id);
     setDatedDraft(datedToDraft(event));
   }
@@ -217,9 +263,16 @@ export function useSchedulePageState() {
     setSubmittingDated(true);
     try {
       if (editingDatedId === "new") {
+        if (!writableOwnerConfigured) {
+          throw new Error("Writable owner is not configured");
+        }
         const created = await createDatedEvent(datedDraft);
         setDated((prev) => [...prev, created]);
       } else if (typeof editingDatedId === "number") {
+        const existing = dated.find((event) => event.id === editingDatedId);
+        if (!existing || !canWriteOwner(existing.owner.id)) {
+          throw new Error("This event is read-only for the configured owner");
+        }
         const updated = await updateDatedEvent(editingDatedId, datedDraft);
         setDated((prev) => prev.map((event) => (event.id === updated.id ? updated : event)));
       }
@@ -243,6 +296,10 @@ export function useSchedulePageState() {
     setError(null);
     setDeletingDatedId(eventId);
     try {
+      const existing = dated.find((event) => event.id === eventId);
+      if (!existing || !canWriteOwner(existing.owner.id)) {
+        throw new Error("This event is read-only for the configured owner");
+      }
       await deleteDatedEvent(eventId);
       setDated((prev) => prev.filter((event) => event.id !== eventId));
       if (editingDatedId === eventId) {
@@ -271,6 +328,8 @@ export function useSchedulePageState() {
     error,
     schedulerEnabled,
     statusTargets,
+    ownerIds,
+    writableOwnerId,
     days,
     repeating,
     dated,
@@ -285,6 +344,7 @@ export function useSchedulePageState() {
     submittingDated,
     deletingRepeatingId,
     deletingDatedId,
+    writableOwnerConfigured,
     refresh,
     startNewRepeating,
     startEditRepeating,

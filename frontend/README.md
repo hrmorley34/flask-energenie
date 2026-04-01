@@ -10,6 +10,8 @@ Next.js frontend for viewing Energenie device status and managing repeating and 
 
 Set `BACKEND_API_URL` in `.env` to override the backend target used by frontend API proxy routes.
 
+Set `NEXT_PUBLIC_WRITABLE_OWNER_ID` in `.env` to choose which owner is allowed to create, edit, and delete events from this frontend build.
+
 ## Local Development
 
 From `frontend/`:
@@ -42,7 +44,8 @@ Open `http://localhost:3000`.
 1. Browser UI calls `schedule-api.ts` wrappers.
 2. Wrappers call frontend `/api/*` routes.
 3. Frontend routes proxy requests to backend API using `BACKEND_API_URL`.
-4. UI state is updated through `useSchedulePageState` handlers.
+4. Write routes are proxied as owner-scoped backend calls using `NEXT_PUBLIC_WRITABLE_OWNER_ID`.
+5. UI state is updated through `useSchedulePageState` handlers.
 
 ## Notes
 

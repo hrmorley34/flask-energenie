@@ -1,5 +1,10 @@
 export type EventAction = "on" | "off" | "reset";
 
+export type EventOwner = {
+  id: number;
+  name: string;
+};
+
 export type RepeatingEvent = {
   type: "repeating";
   id: number;
@@ -8,6 +13,7 @@ export type RepeatingEvent = {
   socket_id: number;
   priority: number;
   action: EventAction;
+  owner: EventOwner;
   minutes_from_midnight: number;
   days: number;
   timezone: string;
@@ -24,6 +30,7 @@ export type DatedEvent = {
   socket_id: number;
   priority: number;
   action: EventAction;
+  owner: EventOwner;
   trigger_at: number;
   timezone: string;
   consumed_at: number | null;
@@ -62,6 +69,15 @@ export type DatedEventWrite = Partial<
 >;
 
 const API_URL = "";
+
+function getWritableOwnerApiPrefix(): string {
+  const ownerIdRaw = process.env.NEXT_PUBLIC_WRITABLE_OWNER_ID;
+  const ownerId = Number(ownerIdRaw);
+  if (!ownerIdRaw || !Number.isInteger(ownerId) || ownerId <= 0) {
+    throw new Error("NEXT_PUBLIC_WRITABLE_OWNER_ID is not configured");
+  }
+  return `/api/owners/${ownerId}`;
+}
 
 function parseErrorDetail(response: Response, payload: unknown): string {
   if (payload && typeof payload === "object") {
@@ -129,7 +145,7 @@ export function updateRepeatingEvent(
   id: number,
   payload: RepeatingEventWrite,
 ): Promise<RepeatingEvent> {
-  return call<RepeatingEvent>(`/api/events/repeating/${id}`, {
+  return call<RepeatingEvent>(`${getWritableOwnerApiPrefix()}/events/repeating/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
@@ -142,20 +158,20 @@ export function createRepeatingEvent(
   > &
     Partial<Pick<RepeatingEvent, "priority">>,
 ): Promise<RepeatingEvent> {
-  return call<RepeatingEvent>("/api/events/repeating", {
+  return call<RepeatingEvent>(`${getWritableOwnerApiPrefix()}/events/repeating`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function deleteRepeatingEvent(id: number): Promise<void> {
-  return call<void>(`/api/events/repeating/${id}`, {
+  return call<void>(`${getWritableOwnerApiPrefix()}/events/repeating/${id}`, {
     method: "DELETE",
   });
 }
 
 export function updateDatedEvent(id: number, payload: DatedEventWrite): Promise<DatedEvent> {
-  return call<DatedEvent>(`/api/events/dated/${id}`, {
+  return call<DatedEvent>(`${getWritableOwnerApiPrefix()}/events/dated/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
@@ -167,14 +183,14 @@ export function createDatedEvent(
     priority?: number;
   },
 ): Promise<DatedEvent> {
-  return call<DatedEvent>("/api/events/dated", {
+  return call<DatedEvent>(`${getWritableOwnerApiPrefix()}/events/dated`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function deleteDatedEvent(id: number): Promise<void> {
-  return call<void>(`/api/events/dated/${id}`, {
+  return call<void>(`${getWritableOwnerApiPrefix()}/events/dated/${id}`, {
     method: "DELETE",
   });
 }
