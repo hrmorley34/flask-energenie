@@ -14,11 +14,22 @@ from typing import (
 )
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, create_engine, select
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    Integer,
+    String,
+    and_,
+    create_engine,
+    func,
+    or_,
+    select,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     Session,
+    aliased,
     declared_attr,
     mapped_column,
     relationship,
@@ -200,7 +211,7 @@ class RepeatingEventDict(EventBaseDict):
     minutes_from_midnight: int
     days: int
     timezone: TimezoneName
-    last_triggered: int | None
+    is_active: bool
 
 
 class RepeatingEventCreateDict(EventBaseCreateDict):
@@ -260,8 +271,6 @@ class RepeatingEvent(EventBase):
 
     timezone: Mapped[TimezoneName] = mapped_column(String, nullable=False)
 
-    last_triggered: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
     @property
     def days_list(self) -> list[bool]:
         return [(self.days >> i) & 1 != 0 for i in range(7)]
@@ -270,7 +279,9 @@ class RepeatingEvent(EventBase):
     def tzinfo(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
 
-    def last_occurrence(self, now_utc: datetime) -> datetime | None:
+    def last_occurrence_time(self, now_utc: datetime) -> datetime | None:
+        """Find the most recent occurrence of this event before now_utc, or None if it has no occurrences.
+        Used in catching up on missed events when the app starts or wakes from sleep."""
         assert now_utc.tzinfo is not None
         local_now = now_utc.astimezone(self.tzinfo)
 
@@ -288,6 +299,35 @@ class RepeatingEvent(EventBase):
         # No day is enabled
         return None
 
+    occurrences: Mapped[list["PastEvent"]] = relationship(
+        lazy="select",
+        # back_populates="repeating_event",
+        order_by=lambda: PastEvent.timestamp.desc(),
+        viewonly=True,
+    )
+    last_occurrence: Mapped["PastEvent | None"] = relationship(
+        lazy="selectin",
+        back_populates="repeating_event",
+        # find the most recent past event for this repeating event, if any
+        primaryjoin=lambda: and_(
+            RepeatingEvent.id == PastEvent.repeating_event_id,
+            PastEvent.timestamp
+            == select(func.max((TimestampPE := aliased(PastEvent)).timestamp)).where(
+                TimestampPE.repeating_event_id == RepeatingEvent.id
+            ),
+        ),
+        uselist=False,
+        viewonly=True,
+    )
+
+    _priority_states: Mapped[list[PriorityState]] = relationship(
+        lazy="selectin", secondary=lambda: PastEvent.__table__, viewonly=True
+    )
+
+    @property
+    def is_active(self) -> bool:
+        return bool(self._priority_states)
+
     def serialise(self) -> RepeatingEventDict:
         return {
             **super().serialise(),
@@ -296,7 +336,7 @@ class RepeatingEvent(EventBase):
             "minutes_from_midnight": self.minutes_from_midnight,
             "days": self.days,
             "timezone": self.timezone,
-            "last_triggered": self.last_triggered,
+            "is_active": self.is_active,
         }
 
 
@@ -305,7 +345,6 @@ class DatedEventDict(EventBaseDict):
     id: int
     trigger_at: int
     timezone: TimezoneName
-    consumed_at: int | None
 
 
 class DatedEventCreateDict(EventBaseCreateDict):
@@ -355,8 +394,6 @@ class DatedEvent(EventBase):
 
     timezone: Mapped[TimezoneName] = mapped_column(String, nullable=False)
 
-    consumed_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
     @property
     def tzinfo(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
@@ -372,7 +409,96 @@ class DatedEvent(EventBase):
             "id": self.id,
             "trigger_at": self.trigger_at,
             "timezone": self.timezone,
+        }
+
+
+class PastEventDict(EmptyDict):
+    id: int
+    name: str | None
+    priority: int
+    socket_id: int
+    action: ActionType
+    owner: EventOwnerDict | None
+    timestamp: int
+    consumed_at: int
+    repeating_event_id: int | None
+    is_active: bool
+
+
+class PastEvent(SerialisableBase):  # not EventBase
+    __tablename__ = "past_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Copied from EventBase at time of trigger, in case the event is later modified or deleted.
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    # enabled: True
+    priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    socket_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[ActionType] = mapped_column(String, nullable=False)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("event_owners.id", ondelete="SET NULL"), nullable=True
+    )
+    owner: Mapped[EventOwner | None] = relationship("EventOwner", lazy="joined")
+
+    timestamp: Mapped[int] = mapped_column(Integer, nullable=False)
+    "UNIX timestamp of when the event should have triggered."
+
+    @property
+    def time_utc(self) -> datetime:
+        return datetime.fromtimestamp(self.timestamp, tz=timezone.utc)
+
+    consumed_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    "UNIX timestamp of when the event was processed."
+
+    @property
+    def consumed_time_utc(self) -> datetime:
+        return datetime.fromtimestamp(self.consumed_at, tz=timezone.utc)
+
+    repeating_event_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("events_repeating.id", ondelete="SET NULL"), nullable=True
+    )
+    repeating_event: Mapped[RepeatingEvent | None] = relationship(
+        "RepeatingEvent", lazy="selectin", back_populates="occurrences"
+    )
+
+    priority_state: Mapped[PriorityState | None] = relationship(
+        lazy="selectin", back_populates="past_event"
+    )
+
+    @classmethod
+    def create_from_event(
+        cls,
+        event: RepeatingEvent | DatedEvent,
+        occurrence_time: datetime,
+        consumed_at: datetime,
+    ) -> PastEvent:
+        assert consumed_at.tzinfo is not None
+        return cls(
+            name=event.name,
+            priority=event.priority,
+            socket_id=event.socket_id,
+            action=event.action,
+            owner_id=event.owner.id,
+            timestamp=int(occurrence_time.timestamp()),
+            consumed_at=int(consumed_at.timestamp()),
+            repeating_event_id=event.id if isinstance(event, RepeatingEvent) else None,
+            priority_state=None,
+        )
+
+    def serialise(self) -> PastEventDict:
+        return {
+            **super().serialise(),
+            "id": self.id,
+            "name": self.name,
+            "priority": self.priority,
+            "socket_id": self.socket_id,
+            "action": self.action,
+            "owner": self.owner.serialise() if self.owner is not None else None,
+            "timestamp": self.timestamp,
             "consumed_at": self.consumed_at,
+            "repeating_event_id": self.repeating_event_id,
+            "is_active": self.priority_state is not None,
         }
 
 
@@ -412,14 +538,12 @@ class PriorityState(Base):
     priority: Mapped[int] = mapped_column(Integer, primary_key=True)
     state: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
-    repeating_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("events_repeating.id"), nullable=True
+    past_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("past_events.id"), nullable=False
     )
-    repeating_event: Mapped[RepeatingEvent | None] = relationship(lazy="joined")
-    dated_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("events_dated.id"), nullable=True
+    past_event: Mapped[PastEvent] = relationship(
+        lazy="selectin", back_populates="priority_state"
     )
-    dated_event: Mapped[DatedEvent | None] = relationship(lazy="joined")
 
     update: Mapped[StateUpdates] = relationship(
         "StateUpdates",
@@ -427,24 +551,6 @@ class PriorityState(Base):
         back_populates="priorities",
         cascade="all, delete",
     )
-
-    @property
-    def owner_id(self) -> int | None:
-        if self.repeating_event is not None:
-            return self.repeating_event.owner_id
-        elif self.dated_event is not None:
-            return self.dated_event.owner_id
-        else:
-            return None
-
-    @property
-    def owner(self) -> EventOwner | None:
-        if self.repeating_event is not None:
-            return self.repeating_event.owner
-        elif self.dated_event is not None:
-            return self.dated_event.owner
-        else:
-            return None
 
 
 class CalendarStore:
@@ -490,35 +596,56 @@ class CalendarStore:
                 session.commit()
             return owner
 
-    def list_repeating_events(
-        self, socket_id: int | None = None, *, session: Session | None = None
+    def list_past_events(
+        self, after: datetime | None = None, *, session: Session | None = None
+    ) -> Sequence[PastEvent]:
+        with self._ensure_session(session) as session:
+            query = select(PastEvent).order_by(PastEvent.timestamp.desc())
+            if after is not None:
+                assert after.tzinfo is not None
+                after_ts = int(after.timestamp())
+                query = query.filter(
+                    or_(
+                        PastEvent.timestamp >= after_ts,
+                        # Always include events affecting the current state
+                        PastEvent.priority_state != None,  # noqa: E711
+                    )
+                )
+            return session.scalars(query).all()
+
+    def cleanup_past_events(
+        self, before: datetime, *, session: Session | None = None
+    ) -> int:
+        assert before.tzinfo is not None
+        before_ts = int(before.timestamp())
+        with self._ensure_session(session) as session:
+            to_delete = session.scalars(
+                select(PastEvent).filter(
+                    and_(
+                        PastEvent.timestamp < before_ts,
+                        # Don't delete events which still affect the current state
+                        PastEvent.priority_state == None,  # noqa: E711
+                    )
+                )
+            ).all()
+            for event in to_delete:
+                session.delete(event)
+            session.commit()
+            return len(to_delete)
+
+    def list_future_repeating_events(
+        self, *, session: Session | None = None
     ) -> Sequence[RepeatingEvent]:
         with self._ensure_session(session) as session:
-            query = select(RepeatingEvent)
-            if socket_id is not None:
-                query = query.filter(RepeatingEvent.socket_id == socket_id)
-            return session.scalars(query).all()
+            repeating = session.scalars(select(RepeatingEvent))
+            return repeating.all()
 
-    def list_dated_events(
-        self, socket_id: int | None = None, *, session: Session | None = None
+    def list_future_dated_events(
+        self, *, session: Session | None = None
     ) -> Sequence[DatedEvent]:
         with self._ensure_session(session) as session:
-            query = select(DatedEvent)
-            if socket_id is not None:
-                query = query.filter(DatedEvent.socket_id == socket_id)
-            return session.scalars(query).all()
-
-    def get_repeating_event(
-        self, event_id: int, *, session: Session | None = None
-    ) -> RepeatingEvent | None:
-        with self._ensure_session(session) as session:
-            return session.get(RepeatingEvent, event_id)
-
-    def get_dated_event(
-        self, event_id: int, *, session: Session | None = None
-    ) -> DatedEvent | None:
-        with self._ensure_session(session) as session:
-            return session.get(DatedEvent, event_id)
+            dated = session.scalars(select(DatedEvent))
+            return dated.all()
 
     def create_repeating_event(
         self,
@@ -541,7 +668,6 @@ class CalendarStore:
                 minutes_from_midnight=payload["minutes_from_midnight"],
                 days=payload.get("days", 0b111_1111),
                 timezone=payload["timezone"],
-                last_triggered=None,
             )
             session.add(event)
             session.commit()
@@ -568,7 +694,6 @@ class CalendarStore:
                 owner_id=owner_id,
                 trigger_at=payload["trigger_at"],
                 timezone=payload["timezone"],
-                consumed_at=None,
             )
             session.add(event)
             session.commit()
@@ -660,9 +785,7 @@ class CalendarStore:
     ) -> Sequence[DatedEvent]:
         with self._ensure_session(session) as session:
             return session.scalars(
-                select(DatedEvent).filter(
-                    DatedEvent.enabled.is_(True), DatedEvent.consumed_at.is_(None)
-                )
+                select(DatedEvent).filter(DatedEvent.enabled.is_(True))
             ).all()
 
     def consume_events(
@@ -672,9 +795,9 @@ class CalendarStore:
             last_updates: dict[int, datetime] = {}
             "Mapping of socket id to timestamp of last consume."
 
-            priorities: dict[
-                int, dict[int, tuple[bool, RepeatingEvent | DatedEvent | None]]
-            ] = defaultdict(dict)
+            priorities: defaultdict[int, dict[int, tuple[bool, PastEvent]]] = (
+                defaultdict(dict)
+            )
             "Mapping of socket id to priority to (state, event)"
 
             for update in session.scalars(select(StateUpdates)).unique():
@@ -682,50 +805,57 @@ class CalendarStore:
                 priorities[update.socket_id] = {
                     known.priority: (
                         known.state,
-                        known.repeating_event or known.dated_event,
+                        known.past_event,
                     )
                     for known in update.priorities
                 }
 
-            rows: list[tuple[datetime, RepeatingEvent | DatedEvent]] = []
+            oldest_dt = now_utc
 
             for event in session.scalars(
                 select(RepeatingEvent).filter(RepeatingEvent.enabled.is_(True))
             ):
-                last_occurrence = event.last_occurrence(now_utc)
+                last_occurrence = event.last_occurrence_time(now_utc)
                 if last_occurrence is None:
                     continue
                 last_update = last_updates.get(event.socket_id)
                 if last_update is not None and last_occurrence <= last_update:
                     continue
-                rows.append((last_occurrence, event))
+                past_event = PastEvent.create_from_event(
+                    event, occurrence_time=last_occurrence, consumed_at=now_utc
+                )
+                session.add(past_event)
+                oldest_dt = min(oldest_dt, past_event.time_utc)
 
             for event in session.scalars(
-                select(DatedEvent).filter(
-                    DatedEvent.enabled.is_(True), DatedEvent.consumed_at.is_(None)
+                select(DatedEvent).where(
+                    DatedEvent.trigger_at <= int(now_utc.timestamp())
                 )
             ):
-                if event.trigger_datetime > now_utc:
-                    continue
-                last_update = last_updates.get(event.socket_id)
-                if last_update is not None and event.trigger_datetime <= last_update:
-                    continue
-                rows.append((event.trigger_datetime, event))
+                if event.enabled:
+                    past_event = PastEvent.create_from_event(
+                        event,
+                        occurrence_time=event.trigger_datetime,
+                        consumed_at=now_utc,
+                    )
+                    session.add(past_event)
+                    oldest_dt = min(oldest_dt, past_event.time_utc)
+                session.delete(event)
 
-            rows.sort(key=lambda item: item[0])
-            for _, event in rows:
+            # In case of slight misordering of DatedEvents, re-run any already
+            # processed events which could have an effect.
+            for event in session.scalars(
+                select(PastEvent).where(
+                    PastEvent.timestamp >= int(oldest_dt.timestamp())
+                )
+            ):
                 if event.action == "reset":
-                    del priorities[event.socket_id][event.priority]
+                    priorities[event.socket_id].pop(event.priority, None)
                 else:
                     priorities[event.socket_id][event.priority] = (
                         event.action == "on",
                         event,
                     )
-                if isinstance(event, RepeatingEvent):
-                    event.last_triggered = int(now_utc.timestamp())
-                else:
-                    event.consumed_at = int(now_utc.timestamp())
-                event.updated_at = int(now_utc.timestamp())
 
             for socket_id, pr in priorities.items():
                 if not pr:
@@ -743,11 +873,12 @@ class CalendarStore:
 
                 new_priorities: list[PriorityState] = []
                 for priority, (st, ev) in pr.items():
-                    pr = PriorityState(socket_id=socket_id, priority=priority, state=st)
-                    if isinstance(ev, RepeatingEvent):
-                        pr.repeating_id = ev.id
-                    elif isinstance(ev, DatedEvent):
-                        pr.dated_id = ev.id
+                    pr = PriorityState(
+                        socket_id=socket_id,
+                        priority=priority,
+                        state=st,
+                        past_event=ev,
+                    )
                     new_priorities.append(pr)
                 update.priorities = new_priorities
 

@@ -1,4 +1,4 @@
-import { DatedEvent, EventAction, RepeatingEvent } from "./schedule-api";
+import { DatedEvent, EventAction, PastEvent, RepeatingEvent } from "./schedule-api";
 
 export type DaySummary = {
   key: string;
@@ -14,6 +14,12 @@ export type EventOccurrence = {
   at: number;
   name: string;
   priority: number;
+};
+
+export type TimelineEventHistory = {
+  past: PastEvent[];
+  repeating: RepeatingEvent[];
+  dated: DatedEvent[];
 };
 
 export type Period = {
@@ -52,3 +58,4 @@ export const DAY_HEIGHT_PX = 24 * HOUR_HEIGHT_PX;
 
 export type RepeatingEventType = RepeatingEvent;
 export type DatedEventType = DatedEvent;
+export type PastEventType = PastEvent;

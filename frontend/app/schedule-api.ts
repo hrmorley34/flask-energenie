@@ -19,6 +19,7 @@ export type RepeatingEvent = {
   timezone: string;
   created_at: number;
   updated_at: number;
+  is_active: boolean;
   last_triggered: number | null;
 };
 
@@ -33,12 +34,25 @@ export type DatedEvent = {
   owner: EventOwner;
   trigger_at: number;
   timezone: string;
-  consumed_at: number | null;
   created_at: number;
   updated_at: number;
 };
 
+export type PastEvent = {
+  id: number;
+  name: string | null;
+  priority: number;
+  socket_id: number;
+  action: EventAction;
+  owner: EventOwner | null;
+  timestamp: number;
+  consumed_at: number;
+  repeating_event_id: number | null;
+  is_active: boolean;
+};
+
 export type EventsResponse = {
+  past: PastEvent[];
   repeating: RepeatingEvent[];
   dated: DatedEvent[];
 };

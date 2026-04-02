@@ -1,14 +1,12 @@
 import { Dispatch, SetStateAction } from "react";
 
 import { DAY_LABELS, RepeatingDraft } from "../page-types";
-import { bitOn, isEventActiveToday, parseTimeToMinutes, toTime } from "../page-utils";
-import { DatedEvent, EventAction, RepeatingEvent } from "../schedule-api";
+import { bitOn, parseTimeToMinutes, toTime } from "../page-utils";
+import { EventAction, RepeatingEvent } from "../schedule-api";
 
 type RepeatingEventsSectionProps = {
   devices: readonly number[];
   loading: boolean;
-  repeating: RepeatingEvent[];
-  dated: DatedEvent[];
   repeatingSorted: RepeatingEvent[];
   editingRepeatingId: number | "new" | null;
   repeatingDraft: RepeatingDraft | null;
@@ -19,6 +17,7 @@ type RepeatingEventsSectionProps = {
   onSubmit: () => Promise<void>;
   onRemove: (eventId: number) => Promise<void>;
   writableOwnerId: number | null;
+  writableOwnerLabel: string;
   writableOwnerConfigured: boolean;
   isSubmitting: boolean;
   deletingEventId: number | null;
@@ -27,8 +26,6 @@ type RepeatingEventsSectionProps = {
 export function RepeatingEventsSection({
   devices,
   loading,
-  repeating,
-  dated,
   repeatingSorted,
   editingRepeatingId,
   repeatingDraft,
@@ -39,6 +36,7 @@ export function RepeatingEventsSection({
   onSubmit,
   onRemove,
   writableOwnerId,
+  writableOwnerLabel,
   writableOwnerConfigured,
   isSubmitting,
   deletingEventId,
@@ -48,7 +46,10 @@ export function RepeatingEventsSection({
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2
+          id="repeating-events-heading"
+          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
+        >
           Repeating Events
         </h2>
         <button
@@ -171,7 +172,7 @@ export function RepeatingEventsSection({
                     }
                   />
                 </td>
-                <td className="px-2 py-2 text-slate-500">Owner {writableOwnerId ?? "?"}</td>
+                <td className="px-2 py-2 text-xs text-slate-600">{writableOwnerLabel}</td>
                 {DAY_LABELS.map((_, idx) => (
                   <td key={`new-repeat-${idx}`} className="px-2 py-2 text-center">
                     <input
@@ -220,18 +221,19 @@ export function RepeatingEventsSection({
               const isEditing = editingRepeatingId === event.id && repeatingDraft !== null;
               const isDeleting = deletingEventId === event.id;
               const canMutate = writableOwnerId !== null && event.owner.id === writableOwnerId;
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const occurredToday = isEventActiveToday(event, repeating, dated, today);
 
               const rowClass = !event.enabled
                 ? "bg-slate-100 text-slate-500"
-                : occurredToday
+                : event.is_active
                   ? "bg-amber-50"
                   : "bg-white";
 
               return (
-                <tr key={event.id} className={`border-b border-slate-100 ${rowClass}`}>
+                <tr
+                  id={`repeating-event-${event.id}`}
+                  key={event.id}
+                  className={`border-b border-slate-100 ${rowClass}`}
+                >
                   <td className="px-2 py-2 text-center">
                     {isEditing ? (
                       <input

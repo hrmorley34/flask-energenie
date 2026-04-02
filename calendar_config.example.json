@@ -1,5 +1,6 @@
 {
   "db_engine": "sqlite:///energenie.db",
+  "past_event_retention_days": 30,
   "rebroadcast_interval_seconds": 60,
   "refreshdb_interval_seconds": 300,
   "scheduler_enabled": true

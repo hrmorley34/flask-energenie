@@ -12,6 +12,7 @@ import {
   fetchEvents,
   fetchHealth,
   fetchStatus,
+  PastEvent,
   RepeatingEvent,
   updateDatedEvent,
   updateRepeatingEvent,
@@ -26,6 +27,7 @@ export function useSchedulePageState() {
   const [deletingDatedId, setDeletingDatedId] = useState<number | null>(null);
   const [schedulerEnabled, setSchedulerEnabled] = useState(false);
   const [statusTargets, setStatusTargets] = useState<Record<string, boolean>>({});
+  const [past, setPast] = useState<PastEvent[]>([]);
   const [repeating, setRepeating] = useState<RepeatingEvent[]>([]);
   const [dated, setDated] = useState<DatedEvent[]>([]);
   const [editingRepeatingId, setEditingRepeatingId] = useState<number | "new" | null>(null);
@@ -42,10 +44,28 @@ export function useSchedulePageState() {
         new Set([
           ...repeating.map((event) => event.owner.id),
           ...dated.map((event) => event.owner.id),
+          ...past.flatMap((event) => (event.owner ? [event.owner.id] : [])),
         ]),
       ).sort((a, b) => a - b),
-    [repeating, dated],
+    [past, repeating, dated],
   );
+
+  const writableOwnerLabel = useMemo(() => {
+    if (writableOwnerId === null) {
+      return "?";
+    }
+
+    const matchingOwner =
+      repeating.find((event) => event.owner.id === writableOwnerId)?.owner ??
+      dated.find((event) => event.owner.id === writableOwnerId)?.owner ??
+      past.find((event) => event.owner?.id === writableOwnerId)?.owner;
+
+    if (!matchingOwner) {
+      return `Owner ${writableOwnerId}`;
+    }
+
+    return `${matchingOwner.name} (${matchingOwner.id})`;
+  }, [writableOwnerId, repeating, dated, past]);
 
   const writableOwnerConfigured = writableOwnerId !== null;
 
@@ -64,6 +84,7 @@ export function useSchedulePageState() {
       ]);
       setSchedulerEnabled(health.scheduler_enabled);
       setStatusTargets(status.targets ?? {});
+      setPast(events.past);
       setRepeating(events.repeating);
       setDated(events.dated);
     } catch (err) {
@@ -323,6 +344,11 @@ export function useSchedulePageState() {
     [dated],
   );
 
+  const pastSorted = useMemo(
+    () => [...past].sort((a, b) => b.timestamp - a.timestamp || b.consumed_at - a.consumed_at),
+    [past],
+  );
+
   return {
     loading,
     error,
@@ -330,7 +356,10 @@ export function useSchedulePageState() {
     statusTargets,
     ownerIds,
     writableOwnerId,
+    writableOwnerLabel,
     days,
+    past,
+    pastSorted,
     repeating,
     dated,
     repeatingSorted,

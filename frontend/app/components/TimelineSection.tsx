@@ -1,4 +1,4 @@
-import { DatedEvent, RepeatingEvent } from "../schedule-api";
+import { DatedEvent, PastEvent, RepeatingEvent } from "../schedule-api";
 import { DAY_HEIGHT_PX, DaySummary, HOUR_HEIGHT_PX } from "../page-types";
 import {
   buildCarryOverOccurrence,
@@ -14,9 +14,18 @@ type TimelineSectionProps = {
   devices: readonly number[];
   repeating: RepeatingEvent[];
   dated: DatedEvent[];
+  past: PastEvent[];
+  now: number;
 };
 
-export function TimelineSection({ days, devices, repeating, dated }: TimelineSectionProps) {
+export function TimelineSection({
+  days,
+  devices,
+  repeating,
+  dated,
+  past,
+  now,
+}: TimelineSectionProps) {
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <h2
@@ -95,8 +104,15 @@ export function TimelineSection({ days, devices, repeating, dated }: TimelineSec
 
                 <div className="relative grid h-full grid-cols-4 gap-1">
                   {devices.map((device) => {
-                    const carryOver = buildCarryOverOccurrence(day, device, repeating, dated);
-                    const occurrences = buildOccurrences(day, device, repeating, dated);
+                    const carryOver = buildCarryOverOccurrence(
+                      day,
+                      device,
+                      repeating,
+                      dated,
+                      past,
+                      now,
+                    );
+                    const occurrences = buildOccurrences(day, device, repeating, dated, past, now);
                     const periods = buildPeriods(
                       carryOver ? [carryOver, ...occurrences] : occurrences,
                       day.end,

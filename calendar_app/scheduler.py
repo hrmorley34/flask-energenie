@@ -3,7 +3,7 @@ from __future__ import annotations
 # pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 from zoneinfo import ZoneInfo
 
@@ -13,6 +13,7 @@ from apscheduler.triggers.date import DateTrigger
 
 from energenie_control import ENERGENIE_IDS, transmit
 
+from .calendar_config import CalendarConfig
 from .database import CalendarStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class CalendarScheduler:
     store: CalendarStore
+    past_event_retention_days: int | None
     rebroadcast_interval_seconds: int
     refreshdb_interval_seconds: int | None
     scheduler: BackgroundScheduler
@@ -27,16 +29,20 @@ class CalendarScheduler:
     _scheduler_lock: Lock
     _transmit_lock: Lock
 
-    def __init__(
-        self,
-        store: CalendarStore,
-        rebroadcast_interval_seconds: int,
-        refreshdb_interval_seconds: int,
-    ) -> None:
+    def __init__(self, store: CalendarStore, config: CalendarConfig) -> None:
         self.store = store
-        self.rebroadcast_interval_seconds = max(1, rebroadcast_interval_seconds)
+        self.past_event_retention_days = (
+            config["past_event_retention_days"]
+            if config["past_event_retention_days"] > 0
+            else None
+        )
+        self.rebroadcast_interval_seconds = max(
+            1, config["rebroadcast_interval_seconds"]
+        )
         self.refreshdb_interval_seconds = (
-            refreshdb_interval_seconds if refreshdb_interval_seconds > 0 else None
+            config["refreshdb_interval_seconds"]
+            if config["refreshdb_interval_seconds"] > 0
+            else None
         )
         self.scheduler = BackgroundScheduler(timezone=timezone.utc)
         self.socket_targets: dict[int, bool] = {}
@@ -76,6 +82,14 @@ class CalendarScheduler:
                 )
             # Run immediately to ensure we're in sync with the database on startup
             self.scheduler.add_job(self.consume_events)
+            self.scheduler.add_job(
+                self.cleanup_past_events,
+                trigger="interval",
+                hours=24,
+                id="cleanup_past",
+            )
+            # Run immediately
+            self.scheduler.add_job(self.cleanup_past_events)
 
     def _schedule_repeating_events(self) -> None:
         for event in self.store.list_enabled_repeating_events():
@@ -131,3 +145,10 @@ class CalendarScheduler:
                         continue
                     transmit(socket_id, target)
                 time.sleep(0.5)
+
+    def cleanup_past_events(self) -> None:
+        if self.past_event_retention_days is not None:
+            cutoff = datetime.now(timezone.utc) - timedelta(
+                days=self.past_event_retention_days
+            )
+            self.store.cleanup_past_events(cutoff)

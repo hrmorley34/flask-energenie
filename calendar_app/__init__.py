@@ -3,6 +3,7 @@ from __future__ import annotations
 # pyright: reportUnusedFunction=false
 import atexit
 import logging
+from datetime import datetime
 from typing import Any, cast
 
 from flask import Flask, jsonify, request
@@ -32,11 +33,7 @@ def create_app() -> Flask:
     store.init_db()
     logging.debug("Database initialised")
 
-    scheduler = CalendarScheduler(
-        store=store,
-        rebroadcast_interval_seconds=calendar_config["rebroadcast_interval_seconds"],
-        refreshdb_interval_seconds=calendar_config["refreshdb_interval_seconds"],
-    )
+    scheduler = CalendarScheduler(store=store, config=calendar_config)
     logging.debug("Scheduler initialised")
 
     if calendar_config["scheduler_enabled"]:
@@ -66,19 +63,24 @@ def create_app() -> Flask:
 
     @app.get("/api/events")
     def list_events():
+        after = request.args.get("after")
+        if after is not None:
+            try:
+                after = datetime.fromtimestamp(int(after))
+            except ValueError:
+                return _json_error("Invalid 'after' parameter", 400)
+
         with store.session() as session:
-            repeating = store.list_repeating_events(session=session)
-            dated = store.list_dated_events(session=session)
+            past = store.list_past_events(after, session=session)
+            repeating = store.list_future_repeating_events(session=session)
+            dated = store.list_future_dated_events(session=session)
             return jsonify(
                 {
+                    "past": [e.serialise() for e in past],
                     "repeating": [e.serialise() for e in repeating],
                     "dated": [e.serialise() for e in dated],
                 }
             )
-
-    @app.get("/api/events/repeating")
-    def list_repeating_events():
-        return jsonify([e.serialise() for e in store.list_repeating_events()])
 
     @app.post("/api/owners/<int:owner_id>/events/repeating")
     def create_repeating_event(owner_id: int):
@@ -115,10 +117,6 @@ def create_app() -> Flask:
 
         rebuild_scheduler_if_enabled()
         return "", 204
-
-    @app.get("/api/events/dated")
-    def list_dated_events():
-        return jsonify([e.serialise() for e in store.list_dated_events()])
 
     @app.post("/api/owners/<int:owner_id>/events/dated")
     def create_dated_event(owner_id: int):

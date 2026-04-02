@@ -1,4 +1,4 @@
-import { DatedEvent, RepeatingEvent } from "./schedule-api";
+import { DatedEvent, PastEvent, RepeatingEvent } from "./schedule-api";
 import {
   DatedDraft,
   DaySummary,
@@ -97,6 +97,10 @@ export function formatTs(tsMs: number): string {
   });
 }
 
+export function formatDateTime(tsMs: number): string {
+  return new Date(tsMs).toLocaleString();
+}
+
 export function minutesSinceDayStart(tsMs: number, dayStartMs: number): number {
   return Math.max(0, Math.min(1440, Math.floor((tsMs - dayStartMs) / 60000)));
 }
@@ -118,14 +122,37 @@ export function classForPeriod(period: Period): string {
   return "bg-amber-100 border-amber-300 text-amber-900";
 }
 
+function pastEventToOccurrence(event: PastEvent): EventOccurrence {
+  return {
+    sourceType: event.repeating_event_id === null ? "dated" : "repeating",
+    action: event.action,
+    at: event.timestamp * 1000,
+    name: event.name ?? "Unnamed",
+    priority: event.priority,
+  };
+}
+
 export function buildOccurrences(
   day: DaySummary,
   deviceId: number,
   repeating: RepeatingEvent[],
   dated: DatedEvent[],
+  past: PastEvent[],
+  nowMs: number,
 ): EventOccurrence[] {
   const result: EventOccurrence[] = [];
   const dayIndexMondayFirst = (day.date.getDay() + 6) % 7;
+
+  for (const event of past) {
+    if (event.socket_id !== deviceId) {
+      continue;
+    }
+
+    const atMs = event.timestamp * 1000;
+    if (atMs < nowMs && atMs >= day.start && atMs < day.end) {
+      result.push(pastEventToOccurrence(event));
+    }
+  }
 
   for (const event of repeating) {
     if (!event.enabled || event.socket_id !== deviceId) {
@@ -137,13 +164,16 @@ export function buildOccurrences(
 
     const at = new Date(day.date);
     at.setHours(0, event.minutes_from_midnight, 0, 0);
-    result.push({
-      sourceType: "repeating",
-      action: event.action,
-      at: at.getTime(),
-      name: event.name ?? "Unnamed",
-      priority: event.priority,
-    });
+    const atMs = at.getTime();
+    if (atMs >= nowMs && atMs >= day.start && atMs < day.end) {
+      result.push({
+        sourceType: "repeating",
+        action: event.action,
+        at: atMs,
+        name: event.name ?? "Unnamed",
+        priority: event.priority,
+      });
+    }
   }
 
   for (const event of dated) {
@@ -151,7 +181,7 @@ export function buildOccurrences(
       continue;
     }
     const atMs = event.trigger_at * 1000;
-    if (atMs >= day.start && atMs < day.end) {
+    if (atMs >= nowMs && atMs >= day.start && atMs < day.end) {
       result.push({
         sourceType: "dated",
         action: event.action,
@@ -170,8 +200,21 @@ export function buildCarryOverOccurrence(
   deviceId: number,
   repeating: RepeatingEvent[],
   dated: DatedEvent[],
+  past: PastEvent[],
+  nowMs: number,
 ): EventOccurrence | null {
   const historicalOccurrences: EventOccurrence[] = [];
+
+  for (const event of past) {
+    if (event.socket_id !== deviceId) {
+      continue;
+    }
+
+    const atMs = event.timestamp * 1000;
+    if (atMs < day.start && atMs < nowMs) {
+      historicalOccurrences.push(pastEventToOccurrence(event));
+    }
+  }
 
   for (const event of repeating) {
     if (!event.enabled || event.socket_id !== deviceId) {
@@ -192,7 +235,7 @@ export function buildCarryOverOccurrence(
       at.setHours(0, event.minutes_from_midnight, 0, 0);
       const atMs = at.getTime();
 
-      if (atMs < day.start) {
+      if (atMs < day.start && atMs >= nowMs) {
         historicalOccurrences.push({
           sourceType: "repeating",
           action: event.action,
@@ -211,7 +254,7 @@ export function buildCarryOverOccurrence(
     }
 
     const atMs = Number(event.trigger_at) * 1000;
-    if (atMs < day.start) {
+    if (atMs < day.start && atMs >= nowMs) {
       historicalOccurrences.push({
         sourceType: "dated",
         action: event.action,

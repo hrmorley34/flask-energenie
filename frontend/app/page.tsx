@@ -3,6 +3,7 @@
 import { DatedEventsSection } from "./components/DatedEventsSection";
 import { CurrentStatusSection } from "./components/CurrentStatusSection";
 import { HeaderSection } from "./components/HeaderSection";
+import { PastEventsSection } from "./components/PastEventsSection";
 import { RepeatingEventsSection } from "./components/RepeatingEventsSection";
 import { TimelineSection } from "./components/TimelineSection";
 import { DEVICES } from "./page-types";
@@ -16,7 +17,9 @@ export default function Home() {
     statusTargets,
     ownerIds,
     writableOwnerId,
+    writableOwnerLabel,
     days,
+    pastSorted,
     repeating,
     dated,
     repeatingSorted,
@@ -61,13 +64,20 @@ export default function Home() {
 
         <CurrentStatusSection devices={DEVICES} statusTargets={statusTargets} />
 
-        <TimelineSection days={days} devices={DEVICES} repeating={repeating} dated={dated} />
+        <TimelineSection
+          days={days}
+          devices={DEVICES}
+          repeating={repeating}
+          dated={dated}
+          past={pastSorted}
+          now={now}
+        />
+
+        <PastEventsSection loading={loading} pastSorted={pastSorted} />
 
         <RepeatingEventsSection
           devices={DEVICES}
           loading={loading}
-          repeating={repeating}
-          dated={dated}
           repeatingSorted={repeatingSorted}
           editingRepeatingId={editingRepeatingId}
           repeatingDraft={repeatingDraft}
@@ -78,6 +88,7 @@ export default function Home() {
           onSubmit={submitRepeating}
           onRemove={removeRepeating}
           writableOwnerId={writableOwnerId}
+          writableOwnerLabel={writableOwnerLabel}
           writableOwnerConfigured={writableOwnerConfigured}
           isSubmitting={submittingRepeating}
           deletingEventId={deletingRepeatingId}
@@ -86,7 +97,6 @@ export default function Home() {
         <DatedEventsSection
           devices={DEVICES}
           loading={loading}
-          now={now}
           datedSorted={datedSorted}
           editingDatedId={editingDatedId}
           datedDraft={datedDraft}
@@ -97,6 +107,7 @@ export default function Home() {
           onSubmit={submitDated}
           onRemove={removeDated}
           writableOwnerId={writableOwnerId}
+          writableOwnerLabel={writableOwnerLabel}
           writableOwnerConfigured={writableOwnerConfigured}
           isSubmitting={submittingDated}
           deletingEventId={deletingDatedId}
