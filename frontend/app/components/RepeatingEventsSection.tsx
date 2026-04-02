@@ -1,7 +1,7 @@
 import { Dispatch, SetStateAction } from "react";
 
 import { DAY_LABELS, RepeatingDraft } from "../page-types";
-import { bitOn, parseTimeToMinutes, toTime } from "../page-utils";
+import { bitOn, getTimezoneOptions, parseTimeToMinutes, toTime } from "../page-utils";
 import { EventAction, RepeatingEvent } from "../schedule-api";
 
 type RepeatingEventsSectionProps = {
@@ -42,6 +42,8 @@ export function RepeatingEventsSection({
   deletingEventId,
 }: RepeatingEventsSectionProps) {
   const canCreate = writableOwnerConfigured;
+  const timezoneOptions = getTimezoneOptions(repeatingDraft?.timezone);
+  const timezoneListId = "repeating-timezones";
 
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -64,7 +66,7 @@ export function RepeatingEventsSection({
         </button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px] border-collapse text-sm">
+        <table className="w-full min-w-[1240px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
               <th className="px-2 py-2 text-center">Enabled</th>
@@ -73,6 +75,7 @@ export function RepeatingEventsSection({
               <th className="px-2 py-2">Action</th>
               <th className="px-2 py-2">Priority</th>
               <th className="px-2 py-2">Time</th>
+              <th className="px-2 py-2">Timezone</th>
               <th className="px-2 py-2">Owner</th>
               {DAY_LABELS.map((label) => (
                 <th key={label} className="px-2 py-2 text-center">
@@ -168,6 +171,19 @@ export function RepeatingEventsSection({
                               minutes_from_midnight: parseTimeToMinutes(e.target.value),
                             }
                           : prev,
+                      )
+                    }
+                  />
+                </td>
+                <td className="px-2 py-2">
+                  <input
+                    type="text"
+                    list={timezoneListId}
+                    className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                    value={repeatingDraft.timezone}
+                    onChange={(e) =>
+                      setRepeatingDraft((prev) =>
+                        prev ? { ...prev, timezone: e.target.value } : prev,
                       )
                     }
                   />
@@ -359,6 +375,28 @@ export function RepeatingEventsSection({
                       toTime(event.minutes_from_midnight)
                     )}
                   </td>
+                  <td className="px-2 py-2 text-slate-600">
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        list={timezoneListId}
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                        value={repeatingDraft.timezone}
+                        onChange={(e) =>
+                          setRepeatingDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  timezone: e.target.value,
+                                }
+                              : prev,
+                          )
+                        }
+                      />
+                    ) : (
+                      event.timezone
+                    )}
+                  </td>
                   <td className="px-2 py-2 text-xs text-slate-600">
                     {event.owner.name} ({event.owner.id})
                   </td>
@@ -445,13 +483,18 @@ export function RepeatingEventsSection({
             })}
             {!loading && repeatingSorted.length === 0 && (
               <tr>
-                <td colSpan={15} className="px-2 py-4 text-center text-sm text-slate-500">
+                <td colSpan={16} className="px-2 py-4 text-center text-sm text-slate-500">
                   No repeating events.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        <datalist id={timezoneListId}>
+          {timezoneOptions.map((timezone) => (
+            <option key={timezone} value={timezone} />
+          ))}
+        </datalist>
       </div>
     </section>
   );

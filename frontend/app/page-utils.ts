@@ -8,6 +8,20 @@ import {
   DAY_LABELS,
 } from "./page-types";
 
+function loadAllTimezones(): string[] {
+  const values = Intl.supportedValuesOf("timeZone");
+  return values.includes("UTC") ? values : ["UTC", ...values];
+}
+
+const ALL_TIMEZONES = loadAllTimezones();
+
+export function getTimezoneOptions(currentTimezone?: string): string[] {
+  if (!currentTimezone || ALL_TIMEZONES.includes(currentTimezone)) {
+    return [...ALL_TIMEZONES];
+  }
+  return [currentTimezone, ...ALL_TIMEZONES];
+}
+
 export function dayRange(): DaySummary[] {
   const now = new Date();
   const base = new Date(now);
@@ -63,6 +77,10 @@ export function dateTimeLocalToUnix(value: string): number {
     return Math.floor(Date.now() / 1000);
   }
   return Math.floor(ts / 1000);
+}
+
+export function getBrowserTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
 export function repeatingToDraft(event: RepeatingEvent): RepeatingDraft {

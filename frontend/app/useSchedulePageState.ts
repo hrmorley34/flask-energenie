@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { DatedDraft, RepeatingDraft } from "./page-types";
 import { getWritableOwnerIdFromPublicEnv } from "./owner-config";
-import { datedToDraft, dayRange, repeatingToDraft } from "./page-utils";
+import { datedToDraft, dayRange, getBrowserTimezone, repeatingToDraft } from "./page-utils";
 import {
   createDatedEvent,
   createRepeatingEvent,
@@ -34,6 +34,7 @@ export function useSchedulePageState() {
   const [repeatingDraft, setRepeatingDraft] = useState<RepeatingDraft | null>(null);
   const [editingDatedId, setEditingDatedId] = useState<number | "new" | null>(null);
   const [datedDraft, setDatedDraft] = useState<DatedDraft | null>(null);
+  const [browserTimezone, setBrowserTimezone] = useState("UTC");
 
   const days = useMemo(() => dayRange(), []);
   const writableOwnerId = getWritableOwnerIdFromPublicEnv();
@@ -104,6 +105,10 @@ export function useSchedulePageState() {
   }, []);
 
   useEffect(() => {
+    setBrowserTimezone(getBrowserTimezone());
+  }, []);
+
+  useEffect(() => {
     let timeoutId: number | null = null;
     let failures = 0;
     let disposed = false;
@@ -160,11 +165,6 @@ export function useSchedulePageState() {
     };
   }, []);
 
-  const defaultTimezone = useMemo(
-    () => repeating[0]?.timezone ?? dated[0]?.timezone ?? "UTC",
-    [repeating, dated],
-  );
-
   function startNewRepeating() {
     if (!writableOwnerConfigured) {
       setError("Writable owner is not configured");
@@ -178,7 +178,7 @@ export function useSchedulePageState() {
       action: "on",
       minutes_from_midnight: 8 * 60,
       days: 0b111_1111,
-      timezone: defaultTimezone,
+      timezone: browserTimezone,
       priority: 0,
     });
   }
@@ -262,7 +262,7 @@ export function useSchedulePageState() {
       socket_id: 1,
       action: "on",
       trigger_at: Math.floor(Date.now() / 1000),
-      timezone: defaultTimezone,
+      timezone: browserTimezone,
       priority: 0,
     });
   }
