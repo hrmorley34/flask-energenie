@@ -1,24 +1,53 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, Sequence
-from zoneinfo import ZoneInfo
+from typing import (
+    Any,
+    ContextManager,
+    Literal,
+    NewType,
+    NotRequired,
+    Sequence,
+    TypedDict,
+)
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
+    Session,
     declared_attr,
     mapped_column,
     relationship,
     sessionmaker,
 )
 
-TYPE_REPEATING = "repeating"
-TYPE_DATED = "dated"
+RepeatingType = Literal["repeating"]
+TYPE_REPEATING: RepeatingType = "repeating"
+DatedType = Literal["dated"]
+TYPE_DATED: DatedType = "dated"
 ActionType = Literal["on", "off", "reset"]
 ACTIONS: set[ActionType] = {"on", "off", "reset"}
+TimezoneName = NewType("TimezoneName", str)
+
+
+def _validate_action(action: str) -> ActionType:
+    action = action.lower()
+    if action not in ACTIONS:
+        raise ValueError("action must be one of: on, off, reset")
+    return action
+
+
+def _validate_timezone(name: str) -> TimezoneName:
+    try:
+        ZoneInfo(name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"Unknown timezone: {name}") from exc
+    else:
+        return TimezoneName(name)
 
 
 def utcnow_timestamp() -> int:
@@ -26,17 +55,32 @@ def utcnow_timestamp() -> int:
 
 
 class Base(DeclarativeBase):
-    def serialise(self) -> dict[str, Any]:
+    pass
+
+
+class EmptyDict(TypedDict):
+    pass
+
+
+class SerialisableBase(Base):
+    __abstract__ = True
+
+    def serialise(self) -> EmptyDict:
         return {}
 
 
-class TimestampedBase(Base):
+class TimestampedDict(EmptyDict):
+    created_at: int
+    updated_at: int
+
+
+class TimestampedBase(SerialisableBase):
     __abstract__ = True
 
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    def serialise(self) -> dict[str, Any]:
+    def serialise(self) -> TimestampedDict:
         return {
             **super().serialise(),
             "created_at": self.created_at,
@@ -44,18 +88,79 @@ class TimestampedBase(Base):
         }
 
 
-class EventOwner(Base):
+class EventOwnerDict(EmptyDict):
+    id: int
+    name: str
+
+
+class EventOwner(SerialisableBase):
     __tablename__ = "event_owners"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
 
-    def serialise(self) -> dict[str, Any]:
+    def serialise(self) -> EventOwnerDict:
         return {
             **super().serialise(),
             "id": self.id,
             "name": self.name,
         }
+
+
+class EventBaseDict(TimestampedDict):
+    name: str | None
+    enabled: bool
+    socket_id: int
+    priority: int
+    action: ActionType
+    owner: EventOwnerDict
+
+
+class EventBaseCreateDict(TypedDict):
+    name: str | None
+    enabled: NotRequired[bool]
+    socket_id: int
+    priority: NotRequired[int]
+    action: ActionType
+
+
+EVENT_BASE_CREATE_REQUIRED = {"name", "socket_id", "action"}
+
+
+def validate_event_base_create_payload(payload: dict[str, Any]) -> EventBaseCreateDict:
+    missing = EVENT_BASE_CREATE_REQUIRED - payload.keys()
+    if missing:
+        raise ValueError(f"Missing fields: {', '.join(sorted(missing))}")
+    return {
+        "name": str(payload["name"] or "").strip() or None,
+        "enabled": bool(payload.get("enabled", True)),
+        "socket_id": int(payload["socket_id"]),
+        "priority": int(payload.get("priority", 0)),
+        "action": _validate_action(payload["action"]),
+    }
+
+
+class EventBaseUpdateDict(TypedDict, total=False):
+    name: str | None
+    enabled: bool
+    socket_id: int
+    priority: int
+    action: ActionType
+
+
+def validate_event_base_update_payload(payload: dict[str, Any]) -> EventBaseUpdateDict:
+    ud: EventBaseUpdateDict = {}
+    if "name" in payload:
+        ud["name"] = str(payload["name"] or "").strip() or None
+    if "enabled" in payload:
+        ud["enabled"] = bool(payload["enabled"])
+    if "socket_id" in payload:
+        ud["socket_id"] = int(payload["socket_id"])
+    if "priority" in payload:
+        ud["priority"] = int(payload["priority"])
+    if "action" in payload:
+        ud["action"] = _validate_action(payload["action"])
+    return ud
 
 
 class EventBase(TimestampedBase):
@@ -77,7 +182,7 @@ class EventBase(TimestampedBase):
     socket_id: Mapped[int] = mapped_column(Integer, nullable=False)
     action: Mapped[ActionType] = mapped_column(String, nullable=False)
 
-    def serialise(self) -> dict[str, Any]:
+    def serialise(self) -> EventBaseDict:
         return {
             **super().serialise(),
             "name": self.name,
@@ -89,6 +194,61 @@ class EventBase(TimestampedBase):
         }
 
 
+class RepeatingEventDict(EventBaseDict):
+    type: RepeatingType
+    id: int
+    minutes_from_midnight: int
+    days: int
+    timezone: TimezoneName
+    last_triggered: int | None
+
+
+class RepeatingEventCreateDict(EventBaseCreateDict):
+    minutes_from_midnight: int
+    days: NotRequired[int]
+    timezone: TimezoneName
+
+
+REPEATING_EVENT_CREATE_REQUIRED = EVENT_BASE_CREATE_REQUIRED | {
+    "minutes_from_midnight",
+    "days",
+    "timezone",
+}
+
+
+def validate_repeating_event_create_payload(
+    payload: dict[str, Any],
+) -> RepeatingEventCreateDict:
+    missing = REPEATING_EVENT_CREATE_REQUIRED - payload.keys()
+    if missing:
+        raise ValueError(f"Missing fields: {', '.join(sorted(missing))}")
+    return {
+        **validate_event_base_create_payload(payload),
+        "minutes_from_midnight": int(payload["minutes_from_midnight"]),
+        "days": int(payload.get("days", 0b111_1111)),
+        "timezone": _validate_timezone(payload["timezone"]),
+    }
+
+
+class RepeatingEventUpdateDict(EventBaseUpdateDict, total=False):
+    minutes_from_midnight: int
+    days: int
+    timezone: TimezoneName
+
+
+def validate_repeating_event_update_payload(
+    payload: dict[str, Any],
+) -> RepeatingEventUpdateDict:
+    ud: RepeatingEventUpdateDict = {**validate_event_base_update_payload(payload)}
+    if "minutes_from_midnight" in payload:
+        ud["minutes_from_midnight"] = int(payload["minutes_from_midnight"])
+    if "days" in payload:
+        ud["days"] = int(payload["days"])
+    if "timezone" in payload:
+        ud["timezone"] = _validate_timezone(payload["timezone"])
+    return ud
+
+
 class RepeatingEvent(EventBase):
     __tablename__ = "events_repeating"
 
@@ -98,7 +258,7 @@ class RepeatingEvent(EventBase):
     days: Mapped[int] = mapped_column(Integer, nullable=False)
     "Bitmask of days of the week, starting with Monday as bit 0."
 
-    timezone: Mapped[str] = mapped_column(String, nullable=False)
+    timezone: Mapped[TimezoneName] = mapped_column(String, nullable=False)
 
     last_triggered: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -128,7 +288,7 @@ class RepeatingEvent(EventBase):
         # No day is enabled
         return None
 
-    def serialise(self) -> dict[str, Any]:
+    def serialise(self) -> RepeatingEventDict:
         return {
             **super().serialise(),
             "type": TYPE_REPEATING,
@@ -140,6 +300,51 @@ class RepeatingEvent(EventBase):
         }
 
 
+class DatedEventDict(EventBaseDict):
+    type: DatedType
+    id: int
+    trigger_at: int
+    timezone: TimezoneName
+    consumed_at: int | None
+
+
+class DatedEventCreateDict(EventBaseCreateDict):
+    trigger_at: int
+    timezone: TimezoneName
+
+
+DATED_EVENT_CREATE_REQUIRED = EVENT_BASE_CREATE_REQUIRED | {"trigger_at", "timezone"}
+
+
+def validate_dated_event_create_payload(
+    payload: dict[str, Any],
+) -> DatedEventCreateDict:
+    missing = DATED_EVENT_CREATE_REQUIRED - payload.keys()
+    if missing:
+        raise ValueError(f"Missing fields: {', '.join(sorted(missing))}")
+    return {
+        **validate_event_base_create_payload(payload),
+        "trigger_at": int(payload["trigger_at"]),
+        "timezone": _validate_timezone(payload["timezone"]),
+    }
+
+
+class DatedEventUpdateDict(EventBaseUpdateDict, total=False):
+    trigger_at: int
+    timezone: TimezoneName
+
+
+def validate_dated_event_update_payload(
+    payload: dict[str, Any],
+) -> DatedEventUpdateDict:
+    ud: DatedEventUpdateDict = {**validate_event_base_update_payload(payload)}
+    if "trigger_at" in payload:
+        ud["trigger_at"] = int(payload["trigger_at"])
+    if "timezone" in payload:
+        ud["timezone"] = _validate_timezone(payload["timezone"])
+    return ud
+
+
 class DatedEvent(EventBase):
     __tablename__ = "events_dated"
 
@@ -148,7 +353,7 @@ class DatedEvent(EventBase):
     trigger_at: Mapped[int] = mapped_column(Integer, nullable=False)
     "UNIX timestamp of when the event should trigger."
 
-    timezone: Mapped[str] = mapped_column(String, nullable=False)
+    timezone: Mapped[TimezoneName] = mapped_column(String, nullable=False)
 
     consumed_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -160,7 +365,7 @@ class DatedEvent(EventBase):
     def trigger_datetime(self) -> datetime:
         return datetime.fromtimestamp(self.trigger_at, tz=self.tzinfo)
 
-    def serialise(self) -> dict[str, Any]:
+    def serialise(self) -> DatedEventDict:
         return {
             **super().serialise(),
             "type": TYPE_DATED,
@@ -210,13 +415,11 @@ class PriorityState(Base):
     repeating_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("events_repeating.id"), nullable=True
     )
-    repeating_event: Mapped[RepeatingEvent | None] = relationship(
-        "RepeatingEvent", lazy="joined"
-    )
+    repeating_event: Mapped[RepeatingEvent | None] = relationship(lazy="joined")
     dated_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("events_dated.id"), nullable=True
     )
-    dated_event: Mapped[DatedEvent | None] = relationship("DatedEvent", lazy="joined")
+    dated_event: Mapped[DatedEvent | None] = relationship(lazy="joined")
 
     update: Mapped[StateUpdates] = relationship(
         "StateUpdates",
@@ -247,26 +450,39 @@ class PriorityState(Base):
 class CalendarStore:
     def __init__(self, url: str, *, enginekwargs: dict[str, Any] = {}) -> None:
         self.engine = create_engine(url, **enginekwargs)
-        self.session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self._session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
 
     def init_db(self) -> None:
         Base.metadata.create_all(self.engine)
-        with self.session_factory() as session:
+        with self._session_factory() as session:
             if session.scalars(select(EventOwner)).first() is None:
                 # Create a default owner for manually added events
                 session.add(EventOwner(name="manual"))
                 session.commit()
 
-    def list_owners(self) -> Sequence[EventOwner]:
-        with self.session_factory() as session:
+    def _ensure_session(self, session: Session | None) -> ContextManager[Session]:
+        if session is not None:
+            return nullcontext(session)
+        else:
+            return self._session_factory()
+
+    def session(self) -> Session:
+        return self._session_factory()
+
+    def list_owners(self, *, session: Session | None = None) -> Sequence[EventOwner]:
+        with self._ensure_session(session) as session:
             return session.scalars(select(EventOwner)).all()
 
-    def get_owner_by_name(self, name: str) -> EventOwner | None:
-        with self.session_factory() as session:
+    def get_owner_by_name(
+        self, name: str, *, session: Session | None = None
+    ) -> EventOwner | None:
+        with self._ensure_session(session) as session:
             return session.scalar(select(EventOwner).filter(EventOwner.name == name))
 
-    def ensure_owner_by_name(self, name: str) -> EventOwner:
-        with self.session_factory() as session:
+    def ensure_owner_by_name(
+        self, name: str, *, session: Session | None = None
+    ) -> EventOwner:
+        with self._ensure_session(session) as session:
             owner = session.scalar(select(EventOwner).filter(EventOwner.name == name))
             if owner is None:
                 owner = EventOwner(name=name)
@@ -274,45 +490,45 @@ class CalendarStore:
                 session.commit()
             return owner
 
-    def list_events(self) -> tuple[Sequence[RepeatingEvent], Sequence[DatedEvent]]:
-        with self.session_factory() as session:
-            repeating = session.scalars(select(RepeatingEvent))
-            dated = session.scalars(select(DatedEvent))
-            return (repeating.all(), dated.all())
+    def list_repeating_events(
+        self, socket_id: int | None = None, *, session: Session | None = None
+    ) -> Sequence[RepeatingEvent]:
+        with self._ensure_session(session) as session:
+            query = select(RepeatingEvent)
+            if socket_id is not None:
+                query = query.filter(RepeatingEvent.socket_id == socket_id)
+            return session.scalars(query).all()
 
-    def list_events_for_socket(
-        self, socket_id: int
-    ) -> tuple[Sequence[RepeatingEvent], Sequence[DatedEvent]]:
-        with self.session_factory() as session:
-            repeating = session.scalars(
-                select(RepeatingEvent).filter(RepeatingEvent.socket_id == socket_id)
-            )
-            dated = session.scalars(
-                select(DatedEvent).filter(DatedEvent.socket_id == socket_id)
-            )
-            return (repeating.all(), dated.all())
+    def list_dated_events(
+        self, socket_id: int | None = None, *, session: Session | None = None
+    ) -> Sequence[DatedEvent]:
+        with self._ensure_session(session) as session:
+            query = select(DatedEvent)
+            if socket_id is not None:
+                query = query.filter(DatedEvent.socket_id == socket_id)
+            return session.scalars(query).all()
 
-    def list_repeating_events(self) -> Sequence[RepeatingEvent]:
-        with self.session_factory() as session:
-            return session.scalars(select(RepeatingEvent)).all()
-
-    def list_dated_events(self) -> Sequence[DatedEvent]:
-        with self.session_factory() as session:
-            return session.scalars(select(DatedEvent)).all()
-
-    def get_repeating_event(self, event_id: int) -> RepeatingEvent | None:
-        with self.session_factory() as session:
+    def get_repeating_event(
+        self, event_id: int, *, session: Session | None = None
+    ) -> RepeatingEvent | None:
+        with self._ensure_session(session) as session:
             return session.get(RepeatingEvent, event_id)
 
-    def get_dated_event(self, event_id: int) -> DatedEvent | None:
-        with self.session_factory() as session:
+    def get_dated_event(
+        self, event_id: int, *, session: Session | None = None
+    ) -> DatedEvent | None:
+        with self._ensure_session(session) as session:
             return session.get(DatedEvent, event_id)
 
     def create_repeating_event(
-        self, owner_id: int, payload: dict[str, Any]
+        self,
+        owner_id: int,
+        payload: RepeatingEventCreateDict,
+        *,
+        session: Session | None = None,
     ) -> RepeatingEvent:
-        now = utcnow_timestamp()
-        with self.session_factory() as session:
+        with self._ensure_session(session) as session:
+            now = utcnow_timestamp()
             event = RepeatingEvent(
                 created_at=now,
                 updated_at=now,
@@ -323,7 +539,7 @@ class CalendarStore:
                 action=payload["action"],
                 owner_id=owner_id,
                 minutes_from_midnight=payload["minutes_from_midnight"],
-                days=payload["days"],
+                days=payload.get("days", 0b111_1111),
                 timezone=payload["timezone"],
                 last_triggered=None,
             )
@@ -332,9 +548,15 @@ class CalendarStore:
             session.refresh(event)  # force population of relationships
             return event
 
-    def create_dated_event(self, owner_id: int, payload: dict[str, Any]) -> DatedEvent:
-        now = utcnow_timestamp()
-        with self.session_factory() as session:
+    def create_dated_event(
+        self,
+        owner_id: int,
+        payload: DatedEventCreateDict,
+        *,
+        session: Session | None = None,
+    ) -> DatedEvent:
+        with self._ensure_session(session) as session:
+            now = utcnow_timestamp()
             event = DatedEvent(
                 created_at=now,
                 updated_at=now,
@@ -354,9 +576,14 @@ class CalendarStore:
             return event
 
     def update_repeating_event(
-        self, owner_id: int, event_id: int, payload: dict[str, Any]
+        self,
+        owner_id: int,
+        event_id: int,
+        payload: RepeatingEventUpdateDict,
+        *,
+        session: Session | None = None,
     ) -> RepeatingEvent | None:
-        with self.session_factory() as session:
+        with self._ensure_session(session) as session:
             event = session.get(RepeatingEvent, event_id)
             if event is None:
                 return None
@@ -372,9 +599,14 @@ class CalendarStore:
             return event
 
     def update_dated_event(
-        self, owner_id: int, event_id: int, payload: dict[str, Any]
+        self,
+        owner_id: int,
+        event_id: int,
+        payload: DatedEventUpdateDict,
+        *,
+        session: Session | None = None,
     ) -> DatedEvent | None:
-        with self.session_factory() as session:
+        with self._ensure_session(session) as session:
             event = session.get(DatedEvent, event_id)
             if event is None:
                 return None
@@ -389,8 +621,10 @@ class CalendarStore:
             session.commit()
             return event
 
-    def delete_repeating_event(self, owner_id: int, event_id: int) -> bool:
-        with self.session_factory() as session:
+    def delete_repeating_event(
+        self, owner_id: int, event_id: int, *, session: Session | None = None
+    ) -> bool:
+        with self._ensure_session(session) as session:
             event = session.get(RepeatingEvent, event_id)
             if event is None:
                 return False
@@ -400,8 +634,10 @@ class CalendarStore:
             session.commit()
             return True
 
-    def delete_dated_event(self, owner_id: int, event_id: int) -> bool:
-        with self.session_factory() as session:
+    def delete_dated_event(
+        self, owner_id: int, event_id: int, *, session: Session | None = None
+    ) -> bool:
+        with self._ensure_session(session) as session:
             event = session.get(DatedEvent, event_id)
             if event is None:
                 return False
@@ -411,22 +647,28 @@ class CalendarStore:
             session.commit()
             return True
 
-    def list_enabled_repeating_events(self) -> Sequence[RepeatingEvent]:
-        with self.session_factory() as session:
+    def list_enabled_repeating_events(
+        self, *, session: Session | None = None
+    ) -> Sequence[RepeatingEvent]:
+        with self._ensure_session(session) as session:
             return session.scalars(
                 select(RepeatingEvent).filter(RepeatingEvent.enabled.is_(True))
             ).all()
 
-    def list_pending_dated_events(self) -> Sequence[DatedEvent]:
-        with self.session_factory() as session:
+    def list_pending_dated_events(
+        self, *, session: Session | None = None
+    ) -> Sequence[DatedEvent]:
+        with self._ensure_session(session) as session:
             return session.scalars(
                 select(DatedEvent).filter(
                     DatedEvent.enabled.is_(True), DatedEvent.consumed_at.is_(None)
                 )
             ).all()
 
-    def consume_events(self, now_utc: datetime) -> dict[int, bool]:
-        with self.session_factory() as session:
+    def consume_events(
+        self, now_utc: datetime, *, session: Session | None = None
+    ) -> dict[int, bool]:
+        with self._ensure_session(session) as session:
             last_updates: dict[int, datetime] = {}
             "Mapping of socket id to timestamp of last consume."
 
@@ -515,121 +757,3 @@ class CalendarStore:
                 update.socket_id: update.state
                 for update in session.scalars(select(StateUpdates)).unique()
             }
-
-
-def validate_repeating_payload(
-    payload: dict[str, Any], partial: bool = False
-) -> dict[str, Any]:
-    required = {
-        "name",
-        "socket_id",
-        "action",
-        "minutes_from_midnight",
-        "days",
-        "timezone",
-    }
-    if not partial:
-        missing = sorted(required - payload.keys())
-        if missing:
-            raise ValueError(f"Missing fields: {', '.join(missing)}")
-
-    validated: dict[str, Any] = {}
-
-    if "name" in payload:
-        name = str(payload["name"] or "").strip()
-        validated["name"] = name or None
-
-    if "enabled" in payload:
-        validated["enabled"] = bool(payload["enabled"])
-
-    if "socket_id" in payload:
-        socket_id = int(payload["socket_id"])
-        if socket_id not in {1, 2, 3, 4}:
-            raise ValueError("socket_id must be between 1 and 4")
-        validated["socket_id"] = socket_id
-
-    if "priority" in payload:
-        validated["priority"] = int(payload["priority"])
-
-    if "action" in payload:
-        action = str(payload["action"]).lower()
-        if action not in ACTIONS:
-            raise ValueError("action must be one of: on, off, reset")
-        validated["action"] = action
-
-    if "minutes_from_midnight" in payload:
-        minutes = int(payload["minutes_from_midnight"])
-        if minutes < 0 or minutes > 1439:
-            raise ValueError("minutes_from_midnight must be between 0 and 1439")
-        validated["minutes_from_midnight"] = minutes
-
-    if "days" in payload:
-        days = int(payload["days"])
-        if days < 0 or days > 127:
-            raise ValueError("days must be a bitmask between 0x00 and 0x7f")
-        validated["days"] = days
-
-    if "timezone" in payload:
-        tz = str(payload["timezone"]).strip()
-        if not tz:
-            raise ValueError("timezone must not be empty")
-        validated["timezone"] = tz
-
-    if not partial:
-        validated.setdefault("enabled", True)
-        validated.setdefault("priority", 0)
-        validated.setdefault("days", 0b111_1111)
-
-    return validated
-
-
-def validate_dated_payload(
-    payload: dict[str, Any], partial: bool = False
-) -> dict[str, Any]:
-    required = {"name", "socket_id", "action", "trigger_at", "timezone"}
-    if not partial:
-        missing = sorted(required - payload.keys())
-        if missing:
-            raise ValueError(f"Missing fields: {', '.join(missing)}")
-
-    validated: dict[str, Any] = {}
-
-    if "name" in payload:
-        name = str(payload["name"] or "").strip()
-        validated["name"] = name or None
-
-    if "enabled" in payload:
-        validated["enabled"] = bool(payload["enabled"])
-
-    if "socket_id" in payload:
-        socket_id = int(payload["socket_id"])
-        if socket_id not in {1, 2, 3, 4}:
-            raise ValueError("socket_id must be between 1 and 4")
-        validated["socket_id"] = socket_id
-
-    if "priority" in payload:
-        validated["priority"] = int(payload["priority"])
-
-    if "action" in payload:
-        action = str(payload["action"]).lower()
-        if action not in ACTIONS:
-            raise ValueError("action must be one of: on, off, reset")
-        validated["action"] = action
-
-    if "trigger_at" in payload:
-        trigger_at = str(payload["trigger_at"] or "").strip()
-        if not trigger_at:
-            raise ValueError("trigger_at must not be empty")
-        validated["trigger_at"] = trigger_at
-
-    if "timezone" in payload:
-        tz = str(payload["timezone"] or "").strip()
-        if not tz:
-            raise ValueError("timezone must not be empty")
-        validated["timezone"] = tz
-
-    if not partial:
-        validated.setdefault("enabled", True)
-        validated.setdefault("priority", 0)
-
-    return validated

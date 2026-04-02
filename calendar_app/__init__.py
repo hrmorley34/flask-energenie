@@ -4,15 +4,16 @@ from __future__ import annotations
 import atexit
 import logging
 from typing import Any, cast
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, jsonify, request
 
 from .calendar_config import load_calendar_config
 from .database import (
     CalendarStore,
-    validate_dated_payload,
-    validate_repeating_payload,
+    validate_dated_event_create_payload,
+    validate_dated_event_update_payload,
+    validate_repeating_event_create_payload,
+    validate_repeating_event_update_payload,
 )
 from .scheduler import CalendarScheduler
 
@@ -21,13 +22,6 @@ logging.basicConfig(level=logging.INFO)
 
 def _json_error(message: str, status: int):
     return jsonify({"error": message}), status
-
-
-def _validate_timezone(name: str) -> None:
-    try:
-        ZoneInfo(name)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError(f"Unknown timezone: {name}") from exc
 
 
 def create_app() -> Flask:
@@ -72,13 +66,15 @@ def create_app() -> Flask:
 
     @app.get("/api/events")
     def list_events():
-        repeating, dated = store.list_events()
-        return jsonify(
-            {
-                "repeating": [e.serialise() for e in repeating],
-                "dated": [e.serialise() for e in dated],
-            }
-        )
+        with store.session() as session:
+            repeating = store.list_repeating_events(session=session)
+            dated = store.list_dated_events(session=session)
+            return jsonify(
+                {
+                    "repeating": [e.serialise() for e in repeating],
+                    "dated": [e.serialise() for e in dated],
+                }
+            )
 
     @app.get("/api/events/repeating")
     def list_repeating_events():
@@ -88,8 +84,7 @@ def create_app() -> Flask:
     def create_repeating_event(owner_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
-            validated = validate_repeating_payload(payload, partial=False)
-            _validate_timezone(validated["timezone"])
+            validated = validate_repeating_event_create_payload(payload)
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
@@ -101,9 +96,7 @@ def create_app() -> Flask:
     def update_repeating_event(owner_id: int, event_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
-            validated = validate_repeating_payload(payload, partial=True)
-            if "timezone" in validated:
-                _validate_timezone(validated["timezone"])
+            validated = validate_repeating_event_update_payload(payload)
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
@@ -131,8 +124,7 @@ def create_app() -> Flask:
     def create_dated_event(owner_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
-            validated = validate_dated_payload(payload, partial=False)
-            _validate_timezone(validated["timezone"])
+            validated = validate_dated_event_create_payload(payload)
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
@@ -144,9 +136,7 @@ def create_app() -> Flask:
     def update_dated_event(owner_id: int, event_id: int):
         payload = cast(dict[str, Any], request.get_json(silent=True) or {})
         try:
-            validated = validate_dated_payload(payload, partial=True)
-            if "timezone" in validated:
-                _validate_timezone(validated["timezone"])
+            validated = validate_dated_event_update_payload(payload)
         except ValueError as exc:
             return _json_error(str(exc), 400)
 
